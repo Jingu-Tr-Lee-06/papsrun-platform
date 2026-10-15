@@ -1,71 +1,77 @@
-"""브라우저 localStorage 기반 로그인 세션 영구 유지 헬퍼 모듈.
+"""브라우저 쿠키 기반 로그인 세션 영구 유지 헬퍼 모듈.
 
-Streamlit 새로고침(F5) 시 session_state 초기화 현상을 방지하기 위해
-브라우저 localStorage와 streamlit session_state를 양방향 동기화합니다.
+Streamlit 새로고침(F5) 시에도 브라우저 쿠키(papsrun_session)를 통해
+로그인 인증 상태를 자동으로 복원합니다.
 """
 
+from datetime import datetime, timedelta
 import json
+import extra_streamlit_components as stx
 import streamlit as st
-import streamlit.components.v1 as components
+
+
+def get_cookie_manager():
+    """CookieManager 싱글톤 인스턴스를 반환합니다."""
+    return stx.CookieManager(key="papsrun_cookie_mgr")
 
 
 def sync_auth_session():
-    """브라우저와 Streamlit 세션 상태를 동기화하고 새로고침 시 복원합니다."""
-    # 1. 쿼리 파라미터 기반 복원 (우선순위 1)
-    qp = st.query_params
-    if not st.session_state.get("authenticated", False):
-        if qp.get("auth") == "true" and qp.get("role") and qp.get("user"):
-            st.session_state.authenticated = True
-            st.session_state.user_role = qp.get("role")
-            st.session_state.user_name = qp.get("user")
-            st.session_state.class_code = qp.get("class_code", "KNU_2026_01")
+    """페이지 로드 시 쿠키를 읽어 세션 상태를 복원합니다."""
+    # 이미 세션이 살아있으면 통과
+    if st.session_state.get("authenticated", False):
+        return
+
+    cookie_mgr = get_cookie_manager()
+    cookie_val = cookie_mgr.get("papsrun_session")
+
+    if cookie_val:
+        try:
+            if isinstance(cookie_val, str):
+                data = json.loads(cookie_val)
+            else:
+                data = cookie_val
+
+            if data.get("authenticated"):
+                st.session_state.authenticated = True
+                st.session_state.user_role = data.get("role")
+                st.session_state.user_name = data.get("user")
+                st.session_state.class_code = data.get("class_code", "KNU_2026_01")
+        except Exception:
+            pass
 
 
 def set_login_session(role: str, user_name: str, class_code: str):
-    """로그인 성공 시 세션 상태, 쿼리 파라미터 및 브라우저 localStorage에 저장합니다."""
+    """로그인 시 세션에 저장하고 유효기간 7일짜리 브라우저 쿠키를 생성합니다."""
     st.session_state.authenticated = True
     st.session_state.user_role = role
     st.session_state.user_name = user_name
     st.session_state.class_code = class_code
 
-    # URL 쿼리 파라미터 동기화
-    st.query_params["auth"] = "true"
-    st.query_params["role"] = role
-    st.query_params["user"] = user_name
-    st.query_params["class_code"] = class_code
-
-    # 브라우저 localStorage에 영구 보관 (스크립트 실행)
-    auth_data = json.dumps({
-        "auth": "true",
+    cookie_mgr = get_cookie_manager()
+    payload = json.dumps({
+        "authenticated": True,
         "role": role,
         "user": user_name,
         "class_code": class_code,
     })
-    components.html(
-        f"""
-        <script>
-            localStorage.setItem('papsrun_auth', '{auth_data}');
-        </script>
-        """,
-        height=0,
-        width=0,
+
+    # 브라우저에 쿠키 굽기 (7일간 유지)
+    cookie_mgr.set(
+        cookie="papsrun_session",
+        val=payload,
+        expires_at=datetime.now() + timedelta(days=7),
     )
 
 
 def clear_login_session():
-    """로그아웃 시 세션 상태, 쿼리 파라미터 및 localStorage를 완전 초기화합니다."""
+    """로그아웃 시 세션 초기화 및 쿠키를 삭제합니다."""
     st.session_state.authenticated = False
     st.session_state.user_role = None
     st.session_state.user_name = ""
     st.session_state.class_code = "KNU_2026_01"
-    st.query_params.clear()
 
-    components.html(
-        """
-        <script>
-            localStorage.removeItem('papsrun_auth');
-        </script>
-        """,
-        height=0,
-        width=0,
-    )
+    cookie_mgr = get_cookie_manager()
+    try:
+        cookie_mgr.delete("papsrun_session")
+    except Exception:
+        pass
