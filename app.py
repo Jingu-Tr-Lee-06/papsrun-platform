@@ -399,10 +399,6 @@ st.markdown(
         <div class="footer-info">
             운영 및 개발: <strong>JH's SW Lab</strong> &nbsp;|&nbsp; 문의: devlee92736@gmail.com
         </div>
-        <div class="footer-disclaimer">
-            본 서비스의 러닝 경로 추천 및 지형·온열부하 분석 결과는 지리정보(GIS) 데이터와 체육 물리 모델을 AI 및 다익스트라 알고리즘으로 시뮬레이션한 교육용 보조 지표이며<br>
-            개별 사용자의 신체 건강 상태나 기상 악화 시 절대적 안전 지침 또는 의료적 판단의 근거가 될 수 없습니다.
-        </div>
         <div class="footer-copyright">
             © 2026 JH's SW Lab. All rights reserved. Powered by Google Gemini.
         </div>
