@@ -24,6 +24,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+from src.utils.auth_helper import sync_auth_session
+sync_auth_session()
+
 
 def render_student_workspace_page() -> None:
     """학생 워크스페이스 페이지 메인 렌더러."""
