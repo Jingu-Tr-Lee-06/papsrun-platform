@@ -1,0 +1,20 @@
+{
+  "CLASS_2026_A": {
+    "class_code": "CLASS_2026_A",
+    "is_locked": false,
+    "air_temp_c": 30.0,
+    "solar_rad": 750.0,
+    "active_step": 1,
+    "teacher_active": true,
+    "updated_at": 1792079952.8662255
+  },
+  "KNU_2026_01": {
+    "class_code": "KNU_2026_01",
+    "is_locked": false,
+    "air_temp_c": 30.0,
+    "solar_rad": 750.0,
+    "active_step": 1,
+    "teacher_active": true,
+    "updated_at": 1792081770.6855028
+  }
+}

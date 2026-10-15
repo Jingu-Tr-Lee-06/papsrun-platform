@@ -1,0 +1,65 @@
+mapbuildplatform/
+├── app.py                                      # 🏠 통합 로그인 게이트웨이 및 글로벌 세션 라우터
+├── requirements.txt                            # 의존성 패키지 명세
+├── .streamlit/
+│   ├── config.toml                             # UI 및 테마 설정
+│   └── secrets.toml                            # Firebase, VWorld, Gemini, Jetson 접속 키
+│
+├── pages/
+│   ├── 1_🎓_학생_학습_워크스페이스.py            # 🚀 5단계 선형 학습 워크스페이스 메인 뷰
+│   └── 2_📊_교사_관리_대시보드.py                # 🔒 교사 전용 학급 관제, 세션 잠금, CSV/GraphML 추출
+│
+├── src/
+│   ├── ai/                                     # 🤖 바이브 코딩 & 생성형 AI 계층
+│   │   ├── __init__.py
+│   │   ├── gemini_client.py                    # Gemini API 세션 및 통신 관리
+│   │   ├── prompt_templates.py                 # 단계별 시스템/바이브 코딩 프롬프트 템플릿
+│   │   ├── code_extractor.py                   # LLM 응답 내 파이썬 코드 블록 추출 및 정제
+│   │   └── sandbox_runner.py                   # ast 기반 코드 안전성 검증 및 동적 가중치 함수 실행기
+│   │
+│   ├── edge/                                   # ⚡ 엣지 컴퓨팅 & 젯슨나노(Jetson Nano) 연동 계층
+│   │   ├── __init__.py
+│   │   ├── jetson_client.py                    # 젯슨나노 REST API/소켓 통신 클라이언트
+│   │   ├── jetson_monitor.py                   # 젯슨 리소스(GPU, CPU, 메모리, 온도) 모니터링
+│   │   └── hardware_emulator.py                # 젯슨나노 미연결 시 로컬 에뮬레이션 백엔드
+│   │
+│   ├── tabs/                                   # 🧩 5단계 화면 렌더링 레이어 (순수 UI 컨트롤러)
+│   │   ├── __init__.py
+│   │   ├── tab1_map_builder.py                 # [1단계 UI] 캠퍼스 지형·환경 맵 연속 작도 화면
+│   │   ├── tab2_topology_checker.py            # [2단계 UI] 학급 도로망 위상 및 연결성 검사 화면
+│   │   ├── tab3_vibe_optimizer.py              # [3단계 UI] 바이브 코딩 경로 최적화 대화·실행 화면
+│   │   ├── tab4_vscode_workspace.py            # [4단계 UI] 웹 VS Code (code-server) 임베딩 화면
+│   │   └── tab5_edge_runner_artifact.py        # [5단계 UI] 젯슨 구동 및 최종 PAPS 산출물 리포트 화면
+│   │
+│   ├── graph/                                  # 🕸️ NetworkX 그래프 및 알고리즘 계층
+│   │   ├── __init__.py
+│   │   ├── graph_builder.py                    # 수집된 노드/간선 데이터를 NetworkX MultiDiGraph로 합성
+│   │   ├── topology_analyzer.py                # 고립 노드, 컴포넌트 연결성, 단절 구간 진단 알고리즘
+│   │   ├── dijkstra_engine.py                  # 표준 최단거리 vs 사용자 정의 비용(Cost) 다익스트라 탐색
+│   │   └── path_evaluator.py                   # 도출된 경로의 총거리, 누적 열부하, 심박 소모량 정량 평가
+│   │
+│   ├── geo/                                    # 📐 지리공간(GIS) 및 환경물리 계산 계층
+│   │   ├── __init__.py
+│   │   ├── snap_engine.py                      # 하버사인 거리 공식 및 15m 자석 스냅 엔진
+│   │   ├── osm_loader.py                       # OSM 도로망 수집 및 노면(표면) 태그 파서
+│   │   ├── surface_classifier.py               # 지오펜싱 및 공간 메타데이터 기반 노면 자동 판별 엔진
+│   │   ├── radiation_engine.py                 # 단파/장파 지표 순복사에너지(Rn) 및 열부하 지수 계산
+│   │   └── elevation_engine.py                 # 위경도 고도차 및 경사도(%) 산출 엔진
+│   │
+│   ├── components/                             # 🎨 재사용 가능한 공통 UI 시각화 컴포넌트
+│   │   ├── __init__.py
+│   │   ├── map_canvas.py                       # Folium 맵 생성, 레이어 제어, 경로 하이라이트 렌더러
+│   │   ├── vibe_chat_panel.py                  # 우측 상주형 Gemini 바이브 코딩 대화창 컴포넌트
+│   │   ├── vscode_iframe.py                    # code-server 보안 연동 및 Iframe 렌더러
+│   │   └── metrics_card.py                     # 심박수, 소모 칼로리, Rn, 경사도 지표 카드 위젯
+│   │
+│   └── db/                                     # 💾 데이터 영속성 및 캐시 계층
+│       ├── __init__.py
+│       ├── firebase_client.py                  # Firestore 클라이언트 초기화 및 실시간 트랜잭션
+│       ├── road_repository.py                  # 도로 간선(Edges) 및 노드(Nodes) CRUD 전담
+│       ├── class_session_manager.py            # 학급 코드, 세션 잠금(is_locked), 모둠 상태 관리
+│       └── local_cache_manager.py              # data/cache/ 로컬 JSON 폴백 전담
+│
+└── data/                                       # 데이터 저장소
+    ├── cache/                                  # 오프라인 및 로컬 JSON 캐시 디렉터리
+    └── code_workspace/                         # 웹 VS Code 작업 영역 디렉터리 (스크립트 및 설정)

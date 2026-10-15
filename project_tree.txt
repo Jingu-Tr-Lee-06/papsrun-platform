@@ -1,0 +1,77 @@
+폴더 PATH의 목록입니다.
+볼륨 일련 번호는 14AB-6880입니다.
+C:.
+|   app.py
+|   file_tree.txt
+|   project_tree.txt
+|   requirements.txt
+|   
++---.streamlit
+|       config.toml
+|       secrets.toml
+|       
++---data
+|   +---cache
+|   \---code_workspace
++---pages
+|       1_student_workspace.py
+|       2_teacher_dashboard.py
+|       
+\---src
+    +---ai
+    |       code_extractor.py
+    |       code_sandbox.py
+    |       gemini_client.py
+    |       prompt_templates.py
+    |       sandbox_runner.py
+    |       __init__.py
+    |       
+    +---components
+    |       map_canvas.py
+    |       metrics_card.py
+    |       vibe_chat_panel.py
+    |       vscode_iframe.py
+    |       __init__.py
+    |       
+    +---db
+    |       class_session_manager.py
+    |       firebase_client.py
+    |       local_cache_manager.py
+    |       road_repository.py
+    |       __init__.py
+    |       
+    +---edge
+    |       hardware_emulator.py
+    |       jetson_client.py
+    |       jetson_monitor.py
+    |       __init__.py
+    |       
+    +---geo
+    |       elevation_engine.py
+    |       osm_loader.py
+    |       radiation_engine.py
+    |       snap_engine.py
+    |       surface_classifier.py
+    |       __init__.py
+    |       
+    +---graph
+    |       dijkstra_engine.py
+    |       graph_builder.py
+    |       path_evaluator.py
+    |       topology_analyzer.py
+    |       __init__.py
+    |       
+    +---tabs
+    |       tab1_map_builder.py
+    |       tab2_topology_checker.py
+    |       tab3_vibe_optimizer.py
+    |       tab4_vscode_workspace.py
+    |       tab5_edge_runner_artifact.py
+    |       __init__.py
+    |       
+    \---ui
+            auth.py
+            dashboard_components.py
+            map_renderer.py
+            __init__.py
+            

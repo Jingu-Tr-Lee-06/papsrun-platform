@@ -1,0 +1,8 @@
+# .gitignore
+.streamlit/secrets.toml
+firebase_key.json
+*.pem
+*.key
+.streamlit/secrets.toml
+__pycache__/
+*.pyc
