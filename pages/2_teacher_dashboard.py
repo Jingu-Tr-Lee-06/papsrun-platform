@@ -37,11 +37,10 @@ if not st.session_state.get("authenticated", False) or st.session_state.get("use
         st.switch_page("app.py")
     st.stop()
 
-# 교사 식별자 우선 바인딩 (user_id 우선, user_name 보조)
-teacher_id = st.session_state.get("user_id") or st.session_state.get("user_name", "teacher_01")
-teacher_display_name = st.session_state.get("user_name", teacher_id)
+# 실제 교사 ID를 우선적으로 바인딩
+teacher_id = st.session_state.get("user_id") or st.session_state.get("user_name") or "teacher_01"
+teacher_display = st.session_state.get("teacher_real_name", teacher_id)
 
-# 교사가 보유한 학급 목록 가져오기
 managed_classes = get_teacher_managed_classes(teacher_id)
 if not managed_classes:
     managed_classes = ["CLASS_2026_A"]
@@ -49,12 +48,11 @@ if not managed_classes:
 # 3. 사이드바: 학급 드롭다운 선택 및 신규 학급 개설
 with st.sidebar:
     st.markdown("### 👨‍🏫 교사 관제 콘솔")
-    st.write(f"**담당 교사**: {teacher_display_name} (`{teacher_id}`)")
+    st.write(f"**담당 교사**: {teacher_display} (`{teacher_id}`)")
 
     st.markdown("---")
     st.markdown("#### 🏫 학급 선택 (드롭다운)")
     
-    # 세션에 저장된 현재 학급의 인덱스 파악
     cur_saved_class = st.session_state.get("class_code", managed_classes[0])
     selected_idx = managed_classes.index(cur_saved_class) if cur_saved_class in managed_classes else 0
 
@@ -66,7 +64,6 @@ with st.sidebar:
     )
     st.session_state.class_code = selected_class
 
-    # 신규 학급 개설 모달 폼
     with st.expander("➕ 새 학급 개설하기"):
         with st.form("create_class_form", clear_on_submit=True):
             new_code_input = st.text_input("새 학급 코드", placeholder="예: CLASS_2026_B")
@@ -81,7 +78,6 @@ with st.sidebar:
                     st.error(msg)
 
     st.markdown("---")
-    # DB 연동 상태 배지
     if is_firestore_available():
         st.success("🟢 Firestore Cloud 연동됨")
     else:

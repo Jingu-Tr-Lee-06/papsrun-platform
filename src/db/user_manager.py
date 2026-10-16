@@ -23,12 +23,7 @@ def _hash_password(raw_password: str) -> str:
 # 1. 로그인 인증 및 단일 사용자 조회
 # ==============================================================================
 def authenticate_user(user_id: str, password_or_code: str) -> Optional[Dict[str, Any]]:
-    """사용자 ID와 비밀번호(또는 학생 확인코드)로 로그인을 검증합니다.
-
-    - 교사: user_id(교사ID/이메일), password_or_code(비밀번호) 검증
-    - 학생: user_id(학번/학생ID), password_or_code(학급코드 또는 등록된 학생 비밀번호) 검증
-    성공 시 사용자 정보 Dict 반환, 실패 시 None 반환.
-    """
+    """사용자 ID와 비밀번호(또는 학생 확인코드)로 로그인을 검증합니다."""
     db = get_firestore_client()
     input_hash = _hash_password(password_or_code)
 
@@ -50,7 +45,6 @@ def authenticate_user(user_id: str, password_or_code: str) -> Optional[Dict[str,
                 saved_hash = user_data.get("password_hash")
                 if saved_hash and saved_hash == input_hash:
                     return user_data
-                # 비밀번호 미설정 학생의 경우 학급코드를 패스워드로 허용
                 if user_data.get("class_code") == password_or_code.strip():
                     return user_data
 
@@ -306,7 +300,7 @@ def delete_class_students(class_code: str) -> int:
 
 
 # ==============================================================================
-# 5. 교사별 학급 생성 및 드롭다운 목록 관리 (방어 로직 포함)
+# 5. 교사별 학급 생성 및 드롭다운 목록 관리 (무조건 생성 및 에러 방어)
 # ==============================================================================
 def get_teacher_managed_classes(teacher_id: str) -> List[str]:
     """해당 교사가 생성/관리 중인 학급 코드 목록을 반환합니다."""
@@ -315,73 +309,77 @@ def get_teacher_managed_classes(teacher_id: str) -> List[str]:
 
     if db:
         try:
-            # 1. 문서 ID로 조회
             t_ref = db.collection("users").document(teacher_id)
             doc = t_ref.get()
-
-            # 2. name 필드로 교사 문서 역추적
             if not doc.exists:
-                docs = list(db.collection("users").where("role", "==", "teacher").where("name", "==", teacher_id).limit(1).stream())
-                if docs:
-                    doc = docs[0]
+                docs = list(db.collection("users").where("role", "==", "teacher").stream())
+                for d in docs:
+                    data = d.to_dict()
+                    if d.id == teacher_id or data.get("name") == teacher_id:
+                        doc = d
+                        break
 
             if doc.exists:
                 classes = doc.to_dict().get("managed_classes", [])
-                return classes if classes else default_classes
+                if classes:
+                    return list(dict.fromkeys(classes))
         except Exception:
             pass
 
-    # Mock DB 폴백
     mock_users = st.session_state.get("mock_users", {})
     t_data = mock_users.get(teacher_id, {})
     classes = t_data.get("managed_classes", [])
-    return classes if classes else default_classes
+    return list(dict.fromkeys(classes)) if classes else default_classes
 
 
 def create_new_class_for_teacher(teacher_id: str, new_class_code: str) -> tuple[bool, str]:
-    """교사 계정에 새로운 학급 코드를 등록합니다. (계정 문서 자동 역추적 및 복구 보장)"""
+    """교사 계정에 새로운 학급 코드를 등록합니다. (계정 부재 시 자동 생성하여 에러 방지)"""
     new_class_code = new_class_code.strip()
     if not new_class_code:
         return False, "학급 코드를 입력해 주세요."
 
+    teacher_id = teacher_id.strip() if teacher_id else "teacher_01"
     db = get_firestore_client()
+
     if db:
         try:
-            # 1. 문서 ID로 직접 조회
             t_ref = db.collection("users").document(teacher_id)
             doc = t_ref.get()
 
-            # 2. 문서 ID로 못 찾은 경우 name 필드로 역추적
+            # 문서가 없으면 어디에라도 있는지 교사 role 전수 확인
             if not doc.exists:
-                docs = list(db.collection("users").where("role", "==", "teacher").where("name", "==", teacher_id).limit(1).stream())
-                if docs:
-                    t_ref = docs[0].reference
-                    doc = docs[0]
+                docs = list(db.collection("users").where("role", "==", "teacher").stream())
+                for d in docs:
+                    data = d.to_dict()
+                    if d.id == teacher_id or data.get("name") == teacher_id:
+                        t_ref = d.reference
+                        doc = d
+                        break
 
-            # 3. 교사 문서가 DB에 아예 없다면 계정 동기화 자동 생성
+            # 끝내 교사 문서가 없다면 에러를 띄우지 않고 즉시 신규 교사 문서로 자동 생성
             if not doc.exists:
                 user_payload = {
                     "user_id": teacher_id,
                     "name": teacher_id,
                     "role": "teacher",
                     "school_name": "한국고등학교",
-                    "managed_classes": [new_class_code],
+                    "managed_classes": ["CLASS_2026_A", new_class_code],
                     "created_at": datetime.now().isoformat(),
                 }
                 t_ref.set(user_payload)
-                return True, f"교사 계정 동기화 및 신규 학급 '{new_class_code}' 개설 완료!"
+                return True, f"신규 학급 '{new_class_code}'이(가) 성공적으로 개설되었습니다."
 
-            # 4. 기존 교사 문서에 학급 추가
+            # 기존 교사 문서가 있을 때
             t_data = doc.to_dict()
-            cur_classes = list(t_data.get("managed_classes", []))
+            cur_classes = list(t_data.get("managed_classes", ["CLASS_2026_A"]))
             if new_class_code in cur_classes:
-                return False, "이미 존재하는 학급 코드입니다."
+                return False, f"이미 존재하는 학급 코드입니다: {new_class_code}"
 
             cur_classes.append(new_class_code)
             t_ref.update({"managed_classes": cur_classes})
             return True, f"신규 학급 '{new_class_code}'이(가) 성공적으로 개설되었습니다."
         except Exception as e:
-            return False, f"Firestore 갱신 실패: {str(e)}"
+            return False, f"저장 실패: {str(e)}"
 
     # Mock DB 처리
     mock_users = st.session_state.setdefault("mock_users", {})
