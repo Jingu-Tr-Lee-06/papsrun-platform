@@ -1,9 +1,4 @@
-"""PAPSrun 플랫폼 메인 랜딩 및 Firestore 통합 인증 모듈.
-
-캠퍼스 지형·환경물리 데이터와 NetworkX 그래프 기반 러닝 경로 최적화를 제공하며,
-Firestore 기반 학생/교사 정식 로그인 및 신규 교사 계정 생성을 지원합니다.
-(학생 계정은 교사 대시보드의 JSON 일괄 등록을 통해 관리됩니다.)
-"""
+"""PAPSrun 플랫폼 메인 랜딩 및 Firestore 통합 인증 모듈."""
 
 from typing import Any, Dict, Optional
 import base64
@@ -21,7 +16,6 @@ from src.utils.auth_helper import (
     sync_auth_session,
 )
 
-# 로고 이미지 및 글로벌 네비게이션 설정
 LOGO_IMAGE_PATH: str = "assets/logo.png"
 
 NAV_LINKS = {
@@ -37,23 +31,15 @@ NOTION_PRIVACY_URL: str = "https://www.notion.so"
 
 
 def get_logo_html(image_path: str, default_emoji: str = "🏃") -> str:
-    """로고 파일 존재 여부를 확인하고 이미지 태그 또는 기본 이모지 HTML을 생성합니다."""
     if os.path.exists(image_path):
         ext = os.path.splitext(image_path)[1].lower().replace(".", "")
-        if ext == "svg":
-            mime = "image/svg+xml"
-        elif ext in ["png", "ico", "jpg", "jpeg", "webp"]:
-            mime = f"image/{ext}" if ext != "ico" else "image/x-icon"
-        else:
-            mime = "image/png"
-
+        mime = f"image/{ext}" if ext in ["png", "jpg", "jpeg", "webp"] else "image/png"
         try:
             with open(image_path, "rb") as f:
                 encoded = base64.b64encode(f.read()).decode("utf-8")
             return f'<img src="data:{mime};base64,{encoded}" alt="PAPSrun Logo" style="height: 32px; width: auto; object-fit: contain; vertical-align: middle; margin-right: 6px;" />'
         except Exception:
             pass
-
     return f'<span style="font-size: 1.5rem; margin-right: 4px; vertical-align: middle;">{default_emoji}</span>'
 
 
@@ -64,218 +50,44 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# 세션 초기화 및 브라우저 세션 동기화
 sync_auth_session()
 
-# URL 쿼리 파라미터에서 기본 학급 코드 추출 (수업용 QR코드 접속 지원)
 qp = st.query_params
 url_class_code = qp.get("class_code", "CLASS_2026_A")
 
-# 커스텀 모던 UI 및 스타일 주입
 st.markdown(
     """
     <style>
-    /* 메인 랜딩 화면 좌측 사이드바 원천 숨김 */
-    [data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"] {
-        display: none !important;
-    }
-
-    /* 전체 페이지 가로 스크롤 방지 */
-    html, body, [data-testid="stAppViewContainer"], .main {
-        overflow-x: hidden !important;
-        max-width: 100vw !important;
-    }
-
-    /* 본문 컨테이너 여백 최적화 (고정 상단바 64px 고려) */
-    .block-container {
-        padding-top: 5.5rem !important;
-        padding-bottom: 2rem !important;
-        padding-left: 2rem !important;
-        padding-right: 2rem !important;
-        max-width: 1240px;
-        margin: 0 auto;
-    }
-    header[data-testid="stHeader"] {
-        background: transparent;
-        height: 0rem;
-    }
-
-    /* 상단 네비게이션 바: 고정형 */
-    .top-nav {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 64px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0 max(2rem, calc((100vw - 1240px) / 2));
-        background: rgba(255, 255, 255, 0.94);
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
-        border-bottom: 1px solid #e2e8f0;
-        z-index: 999999;
-        box-sizing: border-box;
-    }
-    .brand-logo {
-        display: inline-flex;
-        align-items: center;
-        font-size: 1.45rem;
-        font-weight: 800;
-        color: #1e3a8a !important;
-        letter-spacing: -0.6px;
-        text-decoration: none !important;
-    }
-    .brand-logo:hover, .brand-logo:visited, .brand-logo:active, .brand-logo:focus {
-        text-decoration: none !important;
-        color: #1e3a8a !important;
-    }
-    .nav-links {
-        display: flex;
-        align-items: center;
-        gap: 1.8rem;
-        font-size: 0.95rem;
-        font-weight: 500;
-    }
-    .nav-item {
-        color: #334155 !important;
-        text-decoration: none !important;
-        transition: color 0.15s ease-in-out;
-    }
-    .nav-item:hover {
-        color: #2563eb !important;
-    }
-    .nav-item:visited, .nav-item:active, .nav-item:focus {
-        text-decoration: none !important;
-        color: #334155 !important;
-    }
-
-    /* DB 헬스체크 배지 */
-    .db-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 0.8rem;
-        font-weight: 600;
-        padding: 4px 10px;
-        border-radius: 9999px;
-        background: #f1f5f9;
-        color: #475569;
-        border: 1px solid #e2e8f0;
-    }
-
-    /* 히어로 섹션 */
-    .hero-container {
-        text-align: center;
-        padding: 1.2rem 1rem 1.6rem 1rem;
-        margin: 0 auto;
-    }
-    .hero-sub {
-        color: #64748b;
-        font-size: 0.98rem;
-        font-weight: 600;
-        margin-bottom: 0.6rem;
-    }
-    .hero-title {
-        font-size: 2.7rem;
-        font-weight: 800;
-        color: #0f172a;
-        line-height: 1.2;
-        margin-bottom: 0.5rem;
-        letter-spacing: -0.8px;
-    }
-    .hero-desc {
-        font-size: 1.55rem;
-        font-weight: 600;
-        color: #334155;
-        margin-bottom: 1.8rem;
-    }
-
-    /* 통계 지표 카드 그리드 */
-    .stat-container {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 1.5rem;
-        max-width: 820px;
-        margin: 2.5rem auto 3rem auto;
-        padding-top: 1.8rem;
-        border-top: 1px solid #edf2f7;
-    }
-    .stat-card {
-        text-align: center;
-    }
-    .stat-label {
-        font-size: 0.88rem;
-        color: #64748b;
-        margin-bottom: 0.35rem;
-        font-weight: 500;
-    }
-    .stat-value {
-        font-size: 2.1rem;
-        font-weight: 800;
-        color: #2563eb;
-    }
-
-    /* 미니멀 라인 푸터 */
-    .clean-footer {
-        width: 100%;
-        margin-top: 4.0rem;
-        padding-top: 2.5rem;
-        padding-bottom: 2.5rem;
-        border-top: 1px solid #e2e8f0;
-        text-align: center;
-        color: #64748b;
-        font-size: 0.88rem;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    }
-    .footer-links {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        gap: 1.2rem;
-        font-size: 0.92rem;
-        font-weight: 600;
-        margin-bottom: 1.0rem;
-    }
-    .footer-links a {
-        color: #475569 !important;
-        text-decoration: none !important;
-        transition: color 0.15s ease-in-out;
-    }
-    .footer-links a:hover {
-        color: #2563eb !important;
-        text-decoration: underline !important;
-    }
-    .footer-dot {
-        color: #cbd5e1;
-        font-size: 0.8rem;
-    }
-    .footer-info {
-        font-size: 0.86rem;
-        color: #475569;
-        margin-bottom: 1.0rem;
-    }
-    .footer-info strong {
-        color: #1e293b;
-    }
-    .footer-disclaimer {
-        font-size: 0.8rem;
-        color: #94a3b8;
-        line-height: 1.6;
-        max-width: 800px;
-        margin: 0 auto 1.2rem auto;
-    }
-    .footer-copyright {
-        font-size: 0.78rem;
-        color: #94a3b8;
-    }
+    [data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"] { display: none !important; }
+    html, body, [data-testid="stAppViewContainer"], .main { overflow-x: hidden !important; max-width: 100vw !important; }
+    .block-container { padding-top: 5.5rem !important; padding-bottom: 2rem !important; padding-left: 2rem !important; padding-right: 2rem !important; max-width: 1240px; margin: 0 auto; }
+    header[data-testid="stHeader"] { background: transparent; height: 0rem; }
+    .top-nav { position: fixed; top: 0; left: 0; right: 0; height: 64px; display: flex; justify-content: space-between; align-items: center; padding: 0 max(2rem, calc((100vw - 1240px) / 2)); background: rgba(255, 255, 255, 0.94); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-bottom: 1px solid #e2e8f0; z-index: 999999; box-sizing: border-box; }
+    .brand-logo { display: inline-flex; align-items: center; font-size: 1.45rem; font-weight: 800; color: #1e3a8a !important; text-decoration: none !important; }
+    .nav-links { display: flex; align-items: center; gap: 1.8rem; font-size: 0.95rem; font-weight: 500; }
+    .nav-item { color: #334155 !important; text-decoration: none !important; transition: color 0.15s ease-in-out; }
+    .nav-item:hover { color: #2563eb !important; }
+    .db-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 600; padding: 4px 10px; border-radius: 9999px; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+    .hero-container { text-align: center; padding: 1.2rem 1rem 1.6rem 1rem; margin: 0 auto; }
+    .hero-sub { color: #64748b; font-size: 0.98rem; font-weight: 600; margin-bottom: 0.6rem; }
+    .hero-title { font-size: 2.7rem; font-weight: 800; color: #0f172a; line-height: 1.2; margin-bottom: 0.5rem; letter-spacing: -0.8px; }
+    .hero-desc { font-size: 1.55rem; font-weight: 600; color: #334155; margin-bottom: 1.8rem; }
+    .stat-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; max-width: 820px; margin: 2.5rem auto 3rem auto; padding-top: 1.8rem; border-top: 1px solid #edf2f7; }
+    .stat-card { text-align: center; }
+    .stat-label { font-size: 0.88rem; color: #64748b; margin-bottom: 0.35rem; font-weight: 500; }
+    .stat-value { font-size: 2.1rem; font-weight: 800; color: #2563eb; }
+    .clean-footer { width: 100%; margin-top: 4.0rem; padding-top: 2.5rem; padding-bottom: 2.5rem; border-top: 1px solid #e2e8f0; text-align: center; color: #64748b; font-size: 0.88rem; }
+    .footer-links { display: flex; justify-content: center; align-items: center; gap: 1.2rem; font-size: 0.92rem; font-weight: 600; margin-bottom: 1.0rem; }
+    .footer-links a { color: #475569 !important; text-decoration: none !important; }
+    .footer-links a:hover { color: #2563eb !important; text-decoration: underline !important; }
+    .footer-info { font-size: 0.86rem; color: #475569; margin-bottom: 1.0rem; }
+    .footer-disclaimer { font-size: 0.8rem; color: #94a3b8; line-height: 1.6; max-width: 800px; margin: 0 auto 1.2rem auto; }
+    .footer-copyright { font-size: 0.78rem; color: #94a3b8; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# 1. 상단 글로벌 네비게이션 헤더 및 헬스 배지
 logo_markup = get_logo_html(LOGO_IMAGE_PATH)
 nav_links_html = "".join(
     f'<a class="nav-item" href="{url}" target="_blank" rel="noopener noreferrer">{title}</a>'
@@ -303,7 +115,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 2. 히어로 슬로건 섹션
 st.markdown(
     """
     <div class="hero-container">
@@ -315,12 +126,11 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 3. 로그인 및 세션 라우팅
 if st.session_state.get("authenticated", False):
     role_kr = "교사 (관리자)" if st.session_state.user_role == "teacher" else "학생"
     st.success(
         f"현재 **{st.session_state.user_name}**님({role_kr})으로 로그인되어 있습니다. "
-        f"(학급: `{st.session_state.get('class_code', 'CLASS_A')}`)"
+        f"(학급: `{st.session_state.get('class_code', 'CLASS_2026_A')}`)"
     )
 
     col_a, col_b, col_c = st.columns([1, 1, 1])
@@ -339,14 +149,10 @@ if st.session_state.get("authenticated", False):
             st.rerun()
 
 else:
-    # 로그인 및 신규 교사 등록 탭 구성 (학생 자율 가입 제거)
     _, center_col, _ = st.columns([1, 1.35, 1])
     with center_col:
         tab_login, tab_teacher_signup = st.tabs(["🚀 로그인", "👨‍🏫 신규 교사 등록"])
 
-        # ----------------------------------------------------------------------
-        # TAB 1: 정식 로그인 (학생 / 교사)
-        # ----------------------------------------------------------------------
         with tab_login:
             role_choice = st.radio(
                 "로그인 대상",
@@ -356,21 +162,9 @@ else:
 
             with st.form("login_form", clear_on_submit=False):
                 if role_choice == "학생 로그인":
-                    student_id_input = st.text_input(
-                        "학번 / 학생 ID",
-                        placeholder="예: 2026001",
-                    )
-                    class_code_or_pw = st.text_input(
-                        "학급 코드 또는 학생 비밀번호",
-                        value=url_class_code,
-                        placeholder="교사에게 안내받은 학급코드(또는 비밀번호) 입력",
-                    )
-                    st.caption("💡 학생 계정은 담당 교사가 교사 대시보드에서 일괄 등록합니다.")
-                    submitted = st.form_submit_button(
-                        "학생 워크스페이스 입장 (Enter)",
-                        type="primary",
-                        use_container_width=True,
-                    )
+                    student_id_input = st.text_input("학번 / 학생 ID", placeholder="예: 2026001")
+                    class_code_or_pw = st.text_input("학급 코드 또는 학생 비밀번호", value=url_class_code)
+                    submitted = st.form_submit_button("학생 워크스페이스 입장", type="primary", use_container_width=True)
                     if submitted:
                         if not student_id_input.strip() or not class_code_or_pw.strip():
                             st.error("학번과 학급 코드를 모두 입력해 주세요.")
@@ -382,29 +176,18 @@ else:
                             if user_data and user_data.get("role") == "student":
                                 set_login_session(
                                     role="student",
+                                    user_id=student_id_input.strip(),
                                     user_name=user_data.get("name", student_id_input.strip()),
                                     class_code=user_data.get("class_code", class_code_or_pw.strip()),
                                 )
-                                st.success(f"{user_data.get('name')} 학생 인증 완료!")
                                 st.switch_page("pages/1_student_workspace.py")
                             else:
                                 st.error("등록되지 않은 학번이거나 학급 코드가 올바르지 않습니다.")
 
                 else:  # 교사 로그인
-                    teacher_id_input = st.text_input(
-                        "교사 아이디",
-                        placeholder="예: teacher_01",
-                    )
-                    teacher_pw_input = st.text_input(
-                        "비밀번호",
-                        type="password",
-                        placeholder="교사 계정 비밀번호 입력",
-                    )
-                    submitted = st.form_submit_button(
-                        "교사 권한으로 로그인 (Enter)",
-                        type="primary",
-                        use_container_width=True,
-                    )
+                    teacher_id_input = st.text_input("교사 아이디", placeholder="예: teacher_01")
+                    teacher_pw_input = st.text_input("비밀번호", type="password")
+                    submitted = st.form_submit_button("교사 권한으로 로그인", type="primary", use_container_width=True)
                     if submitted:
                         if not teacher_id_input.strip() or not teacher_pw_input.strip():
                             st.error("교사 아이디와 비밀번호를 입력해 주세요.")
@@ -418,17 +201,14 @@ else:
                                 default_class = managed_classes[0] if managed_classes else "CLASS_2026_A"
                                 set_login_session(
                                     role="teacher",
-                                    user_name=user_data.get("name", "담당 교사"),
+                                    user_id=teacher_id_input.strip(),
+                                    user_name=user_data.get("name", teacher_id_input.strip()),
                                     class_code=default_class,
                                 )
-                                st.success(f"{user_data.get('name')} 선생님 환영합니다!")
                                 st.switch_page("pages/2_teacher_dashboard.py")
                             else:
                                 st.error("교사 아이디 또는 비밀번호가 올바르지 않습니다.")
 
-        # ----------------------------------------------------------------------
-        # TAB 2: 신규 교사 계정 생성
-        # ----------------------------------------------------------------------
         with tab_teacher_signup:
             st.caption("학교에 배포된 기관 마스터 시크릿 키를 확인 후 교사 계정을 등록합니다.")
             with st.form("teacher_signup_form", clear_on_submit=False):
@@ -436,16 +216,8 @@ else:
                 new_teacher_name = st.text_input("교사 성명", placeholder="예: 이진호")
                 new_teacher_school = st.text_input("소속 학교", value="한국고등학교")
                 new_teacher_pw = st.text_input("비밀번호 설정", type="password")
-                admin_key_input = st.text_input(
-                    "교사 인증 시크릿 키 (관리자 키)",
-                    type="password",
-                    placeholder="기본값: teacher1234",
-                )
-                signup_submitted = st.form_submit_button(
-                    "교사 계정 생성 완료",
-                    type="primary",
-                    use_container_width=True,
-                )
+                admin_key_input = st.text_input("교사 인증 시크릿 키", type="password", placeholder="기본값: teacher1234")
+                signup_submitted = st.form_submit_button("교사 계정 생성 완료", type="primary", use_container_width=True)
                 if signup_submitted:
                     ok, msg = create_teacher_account(
                         teacher_id=new_teacher_id,
@@ -455,11 +227,10 @@ else:
                         school_name=new_teacher_school,
                     )
                     if ok:
-                        st.success(f"{msg} [🚀 로그인] 탭으로 이동해 교사 로그인을 진행하세요.")
+                        st.success(f"{msg} [🚀 로그인] 탭으로 이동해 접속하세요.")
                     else:
                         st.error(msg)
 
-# 4. PAPSrun 시스템 고유 통계 카드 그리드
 st.markdown(
     """
     <div class="stat-container">
@@ -480,7 +251,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 5. 미니멀 라인 푸터
 st.markdown(
     f"""
     <div class="clean-footer">

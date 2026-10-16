@@ -1,8 +1,4 @@
-"""안정적인 세션 및 인증 동기화 헬퍼 모듈.
-
-외부 서드파티 라이브러리 의존성을 제거하고,
-URL Query Params 및 HTML5 스토리지 브릿지를 통해 새로고침 시에도 세션을 안전하게 복구합니다.
-"""
+"""HMAC-SHA256 보안 세션 토큰 및 상태 동기화 헬퍼 모듈."""
 
 from typing import Any, Dict, Optional
 import base64
@@ -43,48 +39,53 @@ def _verify_and_decode_token(token: str) -> Optional[Dict[str, Any]]:
 
 
 def sync_auth_session() -> None:
-    """새로고침(F5) 시 URL의 session_token을 검증하여 로그인 상태를 복원합니다."""
-    # 1. 이미 세션이 살아있는 경우
+    """새로고침 시 URL의 ?session_token을 검증하여 로그인 상태를 자동 복원합니다."""
+    # 1. 이미 메모리에 인증 세션이 살아있는 경우
     if st.session_state.get("authenticated", False):
         if not st.query_params.get("session_token"):
             payload = {
                 "auth": True,
                 "role": st.session_state.get("user_role"),
-                "user": st.session_state.get("user_name"),
-                "class_code": st.session_state.get("class_code", "CLASS_A"),
+                "user_id": st.session_state.get("user_id"),
+                "user_name": st.session_state.get("user_name"),
+                "class_code": st.session_state.get("class_code", "CLASS_2026_A"),
             }
             st.query_params["session_token"] = _generate_signed_token(payload)
         return
 
-    # 2. 새로고침으로 세션이 날아갔을 때 토큰에서 복구
+    # 2. 브라우저 새로고침(F5) 시 URL 토큰으로부터 복구
     token = st.query_params.get("session_token")
     if token:
         payload = _verify_and_decode_token(token)
         if payload and payload.get("auth") is True:
             st.session_state.authenticated = True
             st.session_state.user_role = payload.get("role")
-            st.session_state.user_name = payload.get("user")
-            st.session_state.class_code = payload.get("class_code", "CLASS_A")
+            st.session_state.user_id = payload.get("user_id") or payload.get("user_name")
+            st.session_state.user_name = payload.get("user_name") or payload.get("user_id")
+            st.session_state.class_code = payload.get("class_code", "CLASS_2026_A")
             return
 
-    # 3. 비인증 기본값 설정
+    # 3. 비인증 기본값
     st.session_state.authenticated = False
     st.session_state.user_role = None
+    st.session_state.user_id = None
     st.session_state.user_name = ""
-    st.session_state.class_code = "CLASS_A"
+    st.session_state.class_code = "CLASS_2026_A"
 
 
-def set_login_session(role: str, user_name: str, class_code: str) -> None:
-    """로그인 성공 시 세션 상태를 저장하고 서명 토큰을 URL에 고정합니다."""
+def set_login_session(role: str, user_id: str, user_name: str, class_code: str) -> None:
+    """로그인 시 세션 및 URL 서명 토큰에 기록합니다."""
     st.session_state.authenticated = True
     st.session_state.user_role = role
+    st.session_state.user_id = user_id
     st.session_state.user_name = user_name
     st.session_state.class_code = class_code
 
     payload = {
         "auth": True,
         "role": role,
-        "user": user_name,
+        "user_id": user_id,
+        "user_name": user_name,
         "class_code": class_code,
     }
     st.query_params["session_token"] = _generate_signed_token(payload)
@@ -94,6 +95,7 @@ def clear_login_session() -> None:
     """로그아웃 시 세션 및 URL 토큰을 즉시 초기화합니다."""
     st.session_state.authenticated = False
     st.session_state.user_role = None
+    st.session_state.user_id = None
     st.session_state.user_name = ""
-    st.session_state.class_code = "CLASS_A"
+    st.session_state.class_code = "CLASS_2026_A"
     st.query_params.clear()
