@@ -307,3 +307,62 @@ def delete_class_students(class_code: str) -> int:
         del mock_users[sid]
         deleted_cnt += 1
     return deleted_cnt
+
+
+# ==============================================================================
+# 5. 교사별 학급 생성 및 드롭다운 목록 관리
+# ==============================================================================
+def get_teacher_managed_classes(teacher_id: str) -> List[str]:
+    """해당 교사가 생성/관리 중인 학급 코드 목록을 반환합니다."""
+    db = get_firestore_client()
+    default_classes = ["CLASS_2026_A"]
+
+    if db:
+        try:
+            doc = db.collection("users").document(teacher_id).get()
+            if doc.exists:
+                classes = doc.to_dict().get("managed_classes", [])
+                return classes if classes else default_classes
+        except Exception:
+            pass
+
+    # Mock DB 폴백
+    mock_users = st.session_state.get("mock_users", {})
+    t_data = mock_users.get(teacher_id, {})
+    classes = t_data.get("managed_classes", [])
+    return classes if classes else default_classes
+
+
+def create_new_class_for_teacher(teacher_id: str, new_class_code: str) -> tuple[bool, str]:
+    """교사 계정에 새로운 학급 코드를 등록합니다."""
+    new_class_code = new_class_code.strip()
+    if not new_class_code:
+        return False, "학급 코드를 입력해 주세요."
+
+    db = get_firestore_client()
+    if db:
+        try:
+            t_ref = db.collection("users").document(teacher_id)
+            doc = t_ref.get()
+            if not doc.exists:
+                return False, "교사 계정을 찾을 수 없습니다."
+
+            cur_classes = list(doc.to_dict().get("managed_classes", []))
+            if new_class_code in cur_classes:
+                return False, "이미 존재하는 학급 코드입니다."
+
+            cur_classes.append(new_class_code)
+            t_ref.update({"managed_classes": cur_classes})
+            return True, f"신규 학급 '{new_class_code}'이(가) 성공적으로 개설되었습니다."
+        except Exception as e:
+            return False, f"Firestore 갱신 실패: {str(e)}"
+
+    # Mock DB 처리
+    mock_users = st.session_state.get("mock_users", {})
+    if teacher_id not in mock_users:
+        return False, "교사 계정을 찾을 수 없습니다 (Mock)."
+    cur_classes = mock_users[teacher_id].setdefault("managed_classes", ["CLASS_2026_A"])
+    if new_class_code in cur_classes:
+        return False, "이미 존재하는 학급 코드입니다."
+    cur_classes.append(new_class_code)
+    return True, f"신규 학급 '{new_class_code}'이(가) 개설되었습니다 (Mock)."
