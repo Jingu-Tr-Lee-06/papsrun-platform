@@ -33,7 +33,6 @@ st.set_page_config(
 
 from src.utils.auth_helper import sync_auth_session
 sync_auth_session()
-
 # ------------------ 권한 검증 (RBAC Guard) ------------------
 if not st.session_state.get("authenticated", False):
     st.warning("로그인이 필요한 페이지입니다. 시작 화면으로 이동합니다.")
