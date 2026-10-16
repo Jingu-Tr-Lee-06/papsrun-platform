@@ -1,180 +1,249 @@
-"""교사용 실시간 수업 통제 및 모니터링 대시보드 페이지.
+"""PAPSrun 교사 종합 관제 대시보드 (Teacher Dashboard).
 
-학급 세션 생성, 학생 작도 편집 권한 잠금(Lock/Unlock),
-학급 공통 기상 파라미터(기온, 태양 일사량) 일괄 배포,
-전체 모둠의 도로망 구축 현황 및 위상 통계를 통합 관제합니다.
+학급/학생 계정의 JSON 일괄 등록 및 관리,
+1차시 맵 빌더 지형 작도 인터락(Lock/Unlock), 기상 강제 주입(Override) 및
+학생 활동 현황 실시간 모니터링을 제공합니다.
 """
 
-from typing import Any, Dict, List, Tuple
+from datetime import datetime
+import json
+from typing import Any, Dict, List
+import pandas as pd
 import streamlit as st
-from streamlit_folium import st_folium
 
-from src.components.map_canvas import (
-    create_interactive_campus_map,
-    render_graph_overlay,
+from src.db.firebase_client import is_firestore_available
+from src.db.user_manager import (
+    bulk_register_students_from_json,
+    delete_class_students,
+    delete_student,
+    get_students_by_class,
 )
-from src.db.class_session_manager import (
-    get_class_session_config,
-    set_class_locked_state,
-    update_class_session_config,
-)
-from src.db.road_repository import clear_all_edges_in_class, get_all_edges
-from src.geo.snap_engine import extract_unique_nodes_from_edges
-from src.graph.graph_builder import build_campus_multidigraph
-from src.graph.topology_validator import validate_campus_network_topology
+from src.utils.auth_helper import clear_login_session, sync_auth_session
 
-# 페이지 기본 설정
+# 1. 페이지 기본 설정 및 세션 복원
 st.set_page_config(
-    page_title="교사 통제 대시보드 - PAPSrun",
+    page_title="PAPSrun - 교사 관제 센터",
     page_icon="👨‍🏫",
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
-from src.utils.auth_helper import sync_auth_session
 sync_auth_session()
-# ------------------ 권한 검증 (RBAC Guard) ------------------
-if not st.session_state.get("authenticated", False):
-    st.warning("로그인이 필요한 페이지입니다. 시작 화면으로 이동합니다.")
-    st.switch_page("app.py")
 
-if st.session_state.get("user_role") != "teacher":
-    st.error("이 페이지는 교사(관리자) 전용 통제 대시보드입니다. 학생 워크스페이스로 이동합니다.")
-    st.switch_page("pages/1_student_workspace.py")
-
-
-def render_teacher_dashboard_page() -> None:
-    """교사 통제 대시보드 메인 렌더러."""
-    st.sidebar.title("👨‍🏫 교사 통제 센터")
-    st.sidebar.caption(f"접속자: {st.session_state.get('user_name', '담당 교사')} 선생님")
-
-    # 1. 관리 대상 학급 선택 (기본값: 로그인 시 설정한 학급 코드)
-    default_code = st.session_state.get("class_code", "KNU_2026_01")
-    class_code = st.sidebar.text_input(
-        "관리 대상 학급 코드",
-        value=default_code,
-        help="수업을 진행할 학급 코드를 입력하세요.",
-    ).strip()
-    st.session_state["class_code"] = class_code
-
-    # 세션 설정 로드
-    session_cfg = get_class_session_config(class_code)
-    current_locked = session_cfg.get("is_locked", False)
-    current_temp = session_cfg.get("air_temp_c", 30.0)
-    current_solar = session_cfg.get("solar_rad", 750.0)
-
-    st.sidebar.divider()
-
-    # 2. 학생 작도 권한 통제 (Lock/Unlock)
-    st.sidebar.markdown("##### 🔒 학생 작도 권한 제어")
-    lock_label = "🔓 작도 편집 해제됨" if not current_locked else "🔒 작도 잠김 (읽기 전용)"
-    st.sidebar.info(f"현재 상태: **{lock_label}**")
-
-    btn_cols = st.sidebar.columns(2)
-    with btn_cols[0]:
-        if st.button("🔒 작도 잠금", use_container_width=True, disabled=current_locked):
-            set_class_locked_state(class_code, True)
-            st.toast("학생들의 도로망 추가/수정이 차단되었습니다.", icon="🔒")
-            st.rerun()
-    with btn_cols[1]:
-        if st.button("🔓 작도 허용", use_container_width=True, disabled=not current_locked):
-            set_class_locked_state(class_code, False)
-            st.toast("학생들의 도로망 작도가 허용되었습니다.", icon="🔓")
-            st.rerun()
-
-    # 3. 학급 공통 기상 환경 일괄 배포 폼
-    st.sidebar.divider()
-    st.sidebar.markdown("##### 🌤️ 학급 환경 변수 주입")
-    with st.sidebar.form("weather_override_form"):
-        new_temp = st.slider("대기 기온 (°C)", min_value=15.0, max_value=40.0, value=float(current_temp), step=0.5)
-        new_solar = st.slider("하향 단파 일사량 (W/m²)", min_value=200.0, max_value=1100.0, value=float(current_solar), step=25.0)
-        apply_weather = st.form_submit_button("전체 모둠 환경 적용", use_container_width=True)
-
-        if apply_weather:
-            update_class_session_config(
-                class_code,
-                {"air_temp_c": new_temp, "solar_rad": new_solar},
-            )
-            st.toast("기상 환경 변수가 학급 전체에 반영되었습니다.", icon="☀️")
-            st.rerun()
-
-    st.sidebar.divider()
-    if st.sidebar.button("🚪 메인 화면(로그아웃)", use_container_width=True):
-        st.session_state.authenticated = False
-        st.session_state.user_role = None
-        st.session_state.user_name = ""
+# 2. 교사 권한 접근 통제 (RBAC Guardrail)
+if not st.session_state.get("authenticated", False) or st.session_state.get("user_role") != "teacher":
+    st.error("⛔ 접근 권한이 없습니다. 교사 계정으로 로그인 후 이용해 주세요.")
+    if st.button("👉 메인 로그인 화면으로 이동", type="primary"):
         st.switch_page("app.py")
+    st.stop()
 
-    # ------------------ 메인 패널 ------------------
-    st.markdown(f"### 🏫 학급 관제 센터: `{class_code}`")
-    st.caption("학생 모둠들이 수집 및 작성한 도로망의 실시간 병합 상태와 네트워크 위상을 점검합니다.")
+# 3. 사이드바 교사 프로필 및 학급 선택
+with st.sidebar:
+    st.markdown("### 👨‍🏫 교사 관제 콘솔")
+    st.write(f"**담당 교사**: {st.session_state.get('user_name', '교사')}")
 
-    edges = get_all_edges(class_code)
-    nodes_dict = extract_unique_nodes_from_edges(edges)
-    G = build_campus_multidigraph(edges)
-    topo_report = validate_campus_network_topology(G) if edges else {}
+    # 현재 작업 학급 지정
+    current_class = st.text_input(
+        "관리 대상 학급 코드",
+        value=st.session_state.get("class_code", "CLASS_2026_A"),
+        help="학생 계정을 조회하고 제어할 학급 코드를 입력하세요.",
+    )
+    st.session_state.class_code = current_class
 
-    # 상단 요약 카드
-    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-    with kpi1:
-        st.metric(label="총 수집 도로 간선", value=f"{len(edges)} 개")
-    with kpi2:
-        st.metric(label="통합 교차점(노드)", value=f"{len(nodes_dict)} 개")
-    with kpi3:
-        num_comp = topo_report.get("component_count", 0) if edges else 0
-        st.metric(label="네트워크 연결 덩어리", value=f"{num_comp} 개")
-    with kpi4:
-        participating_teams = len(set(e.get("team_id", "미지정") for e in edges))
-        st.metric(label="참여 모둠 수", value=f"{participating_teams} 팀")
+    # DB 연결 상태 배지
+    if is_firestore_available():
+        st.success("🟢 Firestore Cloud 연동됨")
+    else:
+        st.warning("🟡 InMemory Mock 모드 작동 중")
 
-    tab_map, tab_teams, tab_manage = st.tabs(["🗺️ 통합 도로망 관제", "👥 모둠별 기여도", "⚙️ 학급 데이터 관리"])
+    st.markdown("---")
+    col_sb1, col_sb2 = st.columns(2)
+    with col_sb1:
+        if st.button("학생 화면 이동", use_container_width=True):
+            st.switch_page("pages/1_student_workspace.py")
+    with col_sb2:
+        if st.button("로그아웃", use_container_width=True, type="secondary"):
+            clear_login_session()
+            st.switch_page("app.py")
 
-    with tab_map:
-        st.markdown("##### 📍 실시간 수집 통합 도로망 현황")
-        base_map = create_interactive_campus_map(center_lat=36.4675, center_lon=127.1405, zoom_start=17)
-        rendered_map = render_graph_overlay(base_map, edges, nodes_dict)
-        st_folium(rendered_map, width="100%", height=550)
+# 4. 메인 대시보드 헤더
+st.title("🎛️ PAPSrun 통합 교사 관제 대시보드")
+st.caption(f"현재 선택된 관리 학급: **`{current_class}`** | 교사 권한으로 안전하게 학생 및 수업 환경을 통제합니다.")
 
-    with tab_teams:
-        st.markdown("##### 📊 모둠별 도로망 구축 기여 분석")
-        if edges:
-            team_stats: Dict[str, Dict[str, Any]] = {}
-            for e in edges:
-                tid = e.get("team_id", "UNKNOWN")
-                if tid not in team_stats:
-                    team_stats[tid] = {"count": 0, "total_len": 0.0, "surfaces": set()}
-                team_stats[tid]["count"] += 1
-                length_val = e.get("length_m") or e.get("length") or 0.0
-                team_stats[tid]["total_len"] += float(length_val)
-                team_stats[tid]["surfaces"].add(e.get("surface_type", "unknown"))
+# 5. 관제 탭 구성
+tab_students, tab_course_control, tab_analytics = st.tabs(
+    ["👥 학급·학생 계정 관리", "🔒 수업 인터락 및 지형 통제", "📊 실시간 학습 현황"]
+)
 
-            stat_rows = []
-            for tid, stat in team_stats.items():
-                stat_rows.append({
-                    "모둠 식별자": tid,
-                    "작도 간선 수": f"{stat['count']} 개",
-                    "총 연장 거리": f"{stat['total_len']:.1f} m",
-                    "기여 노면 다양성": f"{len(stat['surfaces'])} 종",
-                })
-            st.dataframe(stat_rows, use_container_width=True)
-        else:
-            st.info("아직 제출된 모둠 데이터가 없습니다.")
+# ==============================================================================
+# TAB 1: 학급·학생 계정 관리 (JSON 일괄 등록 및 조회/삭제)
+# ==============================================================================
+with tab_students:
+    st.subheader("📋 학급 학생 명단 관리 및 JSON 일괄 등록")
+    st.markdown(
+        """
+        학생 개개인의 자율 가입을 기다리지 않고, 학급 명단 JSON 파일을 업로드하여 
+        **30~40명의 학생 계정을 원클릭으로 일괄 생성**할 수 있습니다.
+        """
+    )
 
-    with tab_manage:
-        st.markdown("##### ⚠️ 학급 데이터 비상 초기화")
-        st.caption("수업 리셋 시 현재 학급에 등록된 모든 도로 간선 데이터를 영구 삭제합니다.")
+    col_upload, col_sample = st.columns([1.2, 1])
 
-        with st.expander("🚨 학급 데이터 전체 삭제 영역", expanded=False):
-            st.error("이 작업은 되돌릴 수 없습니다. 학생들의 작도 데이터가 모두 제거됩니다.")
-            confirm_code = st.text_input("확인을 위해 학급 코드를 다시 입력하세요:")
-            if st.button("모든 도로 데이터 일괄 삭제", type="primary"):
-                if confirm_code == class_code:
-                    clear_all_edges_in_class(class_code)
-                    st.success(f"`{class_code}` 학급의 도로망 데이터가 초기화되었습니다.")
+    with col_upload:
+        st.markdown("#### 1. 학생 명단 JSON 파일 업로드")
+        uploaded_file = st.file_uploader(
+            "학생 명단 JSON 파일을 선택하세요",
+            type=["json"],
+            help="학생 식별자, 이름, 모둠, PAPS 등급이 포함된 JSON 파일",
+        )
+
+        if uploaded_file is not None:
+            try:
+                json_text = uploaded_file.read().decode("utf-8")
+                # 미리보기 파싱 검증
+                parsed_data = json.loads(json_text)
+                st.info(f"📄 파일 파싱 성공: 총 {len(parsed_data) if isinstance(parsed_data, list) else 1}건의 데이터 감지")
+
+                if st.button("🚀 위 학생 명단 Firestore 일괄 등록 실행", type="primary", use_container_width=True):
+                    with st.spinner("Firestore users 컬렉션에 일괄 등록 중..."):
+                        success_cnt, fail_cnt, errors = bulk_register_students_from_json(
+                            json_content=json_text,
+                            teacher_id=st.session_state.get("user_name", "teacher"),
+                            default_class_code=current_class,
+                        )
+
+                    if success_cnt > 0:
+                        st.success(f"✅ {success_cnt}명의 학생 계정이 정상 등록되었습니다.")
+                    if fail_cnt > 0:
+                        st.error(f"❌ {fail_cnt}건 등록 실패: {', '.join(errors)}")
                     st.rerun()
-                else:
-                    st.error("학급 코드가 일치하지 않습니다.")
 
+            except Exception as e:
+                st.error(f"JSON 파일 파싱 실패: {str(e)}")
 
-if __name__ == "__main__":
-    render_teacher_dashboard_page()
+    with col_sample:
+        st.markdown("#### 2. 표준 JSON 포맷 가이드")
+        sample_json_template = [
+            {
+                "student_id": "2026101",
+                "name": "김철수",
+                "class_code": current_class,
+                "team_id": "TEAM_1",
+                "paps_grade": 2,
+            },
+            {
+                "student_id": "2026102",
+                "name": "이영희",
+                "class_code": current_class,
+                "team_id": "TEAM_2",
+                "paps_grade": 3,
+            },
+            {
+                "student_id": "2026103",
+                "name": "박민수",
+                "class_code": current_class,
+                "team_id": "TEAM_3",
+                "paps_grade": 1,
+            },
+        ]
+        st.code(json.dumps(sample_json_template, indent=2, ensure_ascii=False), language="json")
+        st.caption("💡 비밀번호 미지정 시 학생은 자신의 '학급코드'를 비밀번호로 사용하여 로그인합니다.")
+
+    st.markdown("---")
+
+    # 등록된 학생 목록 조회 및 관리 섹션
+    st.markdown(f"#### 3. 현재 학급(`{current_class}`) 등록 학생 목록")
+    students_list = get_students_by_class(current_class)
+
+    if not students_list:
+        st.warning(f"현재 학급 `{current_class}`에 등록된 학생 계정이 없습니다. 상단에서 명단 JSON을 업로드해 주세요.")
+    else:
+        # 데이터프레임 시각화
+        df_students = pd.DataFrame(students_list)
+        display_cols = ["student_id", "name", "team_id", "paps_grade", "created_at"]
+        actual_cols = [c for c in display_cols if c in df_students.columns]
+
+        st.dataframe(
+            df_students[actual_cols].rename(
+                columns={
+                    "student_id": "학번/ID",
+                    "name": "성명",
+                    "team_id": "소속 권역/모둠",
+                    "paps_grade": "PAPS 등급",
+                    "created_at": "등록 일시",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        col_del_single, col_del_bulk = st.columns([1, 1])
+
+        with col_del_single:
+            with st.expander("🗑️ 학생 개별 삭제"):
+                target_sid = st.selectbox(
+                    "삭제할 학생 선택",
+                    [s.get("student_id") for s in students_list],
+                    format_func=lambda sid: f"{sid} ({next((s.get('name') for s in students_list if s.get('student_id') == sid), '')})",
+                )
+                if st.button("선택 학생 계정 삭제", type="secondary"):
+                    if delete_student(target_sid):
+                        st.success(f"학번 `{target_sid}` 학생이 삭제되었습니다.")
+                        st.rerun()
+                    else:
+                        st.error("삭제 실패")
+
+        with col_del_bulk:
+            with st.expander("⚠️ 학급 전체 학생 계정 초기화"):
+                st.warning("주의: 이 작업은 되돌릴 수 없습니다. 해당 학급의 모든 학생 계정이 영구 삭제됩니다.")
+                confirm_txt = st.text_input(f"초기화하려면 학급 코드 '{current_class}'를 그대로 입력하세요")
+                if st.button("학급 전체 학생 일괄 삭제", type="primary"):
+                    if confirm_txt.strip() == current_class:
+                        del_cnt = delete_class_students(current_class)
+                        st.success(f"총 {del_cnt}명의 학생 계정이 일괄 삭제되었습니다.")
+                        st.rerun()
+                    else:
+                        st.error("학급 코드가 일치하지 않습니다.")
+
+# ==============================================================================
+# TAB 2: 수업 인터락 및 지형 통제 (1차시 작도 잠금 및 환경 변수 주입)
+# ==============================================================================
+with tab_course_control:
+    st.subheader("🔒 차시별 학생 권한 잠금 (Interlock Control)")
+    st.markdown(
+        """
+        수업 진행 시 학생들의 작도 조작 권한을 통제합니다. 
+        1차시(지구과학①) 도로망 구축이 끝나면 **[작도 잠금]**을 활성화하여 도로 데이터가 변형되지 않도록 보호합니다.
+        """
+    )
+
+    col_lock1, col_lock2 = st.columns(2)
+    with col_lock1:
+        st.markdown("#### 1차시 도로망 맵 빌더 편집 권한")
+        is_locked_state = st.toggle("🔒 1차시 도로망 작도 잠금 (읽기 전용 모드)", value=False)
+        if is_locked_state:
+            st.error("현재 학생 워크스페이스의 노드/간선 추가 기능이 잠겨 있습니다. (동결 상태)")
+        else:
+            st.success("학생들이 도로망을 자유롭게 작도하고 수정할 수 있는 상태입니다.")
+
+    with col_lock2:
+        st.markdown("#### 기상청 API 장애 대비 가상 환경 주입 (Override)")
+        override_active = st.checkbox("기상청 API 실측값 대신 교사 수동 파라미터 강제 주입", value=False)
+        sim_temp = st.slider("가상 대기 기온 (°C)", min_value=15.0, max_value=38.0, value=31.5, step=0.5, disabled=not override_active)
+        sim_solar = st.slider("가상 전일사량 (W/m²)", min_value=100.0, max_value=1100.0, value=750.0, step=25.0, disabled=not override_active)
+        if override_active:
+            st.info(f"학생 워크스페이스에 기온 **{sim_temp}°C**, 일사량 **{sim_solar} W/m²** 데이터가 강제 브로드캐스팅됩니다.")
+
+# ==============================================================================
+# TAB 3: 실시간 학습 현황
+# ==============================================================================
+with tab_analytics:
+    st.subheader("📊 모둠별 진행 현황 요약")
+    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+    with col_m1:
+        st.metric("1조 (통학로 권역)", "간선 112개", "위상 무결")
+    with col_m2:
+        st.metric("2조 (트랙 권역)", "간선 86개", "위상 무결")
+    with col_m3:
+        st.metric("3조 (사잇길 권역)", "간선 124개", "경계 점검 요망", delta_color="inverse")
+    with col_m4:
+        st.metric("4조 (언덕 권역)", "간선 106개", "위상 무결")
