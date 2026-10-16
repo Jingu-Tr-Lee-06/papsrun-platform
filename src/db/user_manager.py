@@ -1,4 +1,8 @@
-"""Firebase Firestore 기반 통합 사용자 계정 및 학급 관리 모듈."""
+"""Firebase Firestore 기반 통합 사용자 계정 및 학급 관리 모듈.
+
+교사의 계정 생성, 학생 명단 JSON 일괄 등록/삭제, 로그인 인증(해시 검증)
+및 학급 단위 학생 조회를 처리합니다.
+"""
 
 from datetime import datetime
 import hashlib
@@ -10,9 +14,13 @@ from src.db.firebase_client import get_firestore_client
 
 
 def _hash_password(raw_password: str) -> str:
+    """비밀번호를 SHA-256으로 해싱합니다."""
     return hashlib.sha256(raw_password.encode("utf-8")).hexdigest()
 
 
+# ==============================================================================
+# 1. 로그인 인증 및 단일 사용자 조회
+# ==============================================================================
 def authenticate_user(user_id: str, password_or_code: str) -> Optional[Dict[str, Any]]:
     db = get_firestore_client()
     input_hash = _hash_password(password_or_code)
@@ -59,6 +67,9 @@ def authenticate_user(user_id: str, password_or_code: str) -> Optional[Dict[str,
     return None
 
 
+# ==============================================================================
+# 2. 교사 계정 생성 (회원가입)
+# ==============================================================================
 def create_teacher_account(
     teacher_id: str,
     raw_password: str,
@@ -95,13 +106,17 @@ def create_teacher_account(
         except Exception as e:
             return False, f"Firestore 저장 오류: {str(e)}"
 
-    mock_users = st.session_state.setdefault("mock_users", {})
-    if teacher_id in mock_users:
+    if "mock_users" not in st.session_state:
+        st.session_state.mock_users = {}
+    if teacher_id in st.session_state.mock_users:
         return False, "이미 존재하는 교사 아이디입니다."
-    mock_users[teacher_id] = user_payload
+    st.session_state.mock_users[teacher_id] = user_payload
     return True, "교사 계정이 성공적으로 생성되었습니다 (로컬 모드)."
 
 
+# ==============================================================================
+# 3. 학생 JSON 일괄 등록 (교사용)
+# ==============================================================================
 def bulk_register_students_from_json(
     json_content: str,
     teacher_id: str,
@@ -123,6 +138,7 @@ def bulk_register_students_from_json(
     db = get_firestore_client()
     batch = db.batch() if db else None
     batch_ops = 0
+
     registered_classes = set()
 
     for idx, item in enumerate(data):
@@ -150,6 +166,7 @@ def bulk_register_students_from_json(
             "registered_by": teacher_id,
             "created_at": datetime.now().isoformat(),
         }
+
         registered_classes.add(class_code)
 
         if db:
@@ -169,13 +186,12 @@ def bulk_register_students_from_json(
     if db and batch_ops > 0:
         batch.commit()
 
-    if registered_classes and teacher_id:
-        for c in registered_classes:
-            create_new_class_for_teacher(teacher_id, c)
-
     return success_cnt, fail_cnt, error_logs
 
 
+# ==============================================================================
+# 4. 학급별 학생 조회 및 삭제
+# ==============================================================================
 def get_students_by_class(class_code: str) -> List[Dict[str, Any]]:
     db = get_firestore_client()
     if db:
@@ -243,94 +259,3 @@ def delete_class_students(class_code: str) -> int:
         del mock_users[sid]
         deleted_cnt += 1
     return deleted_cnt
-
-
-def get_teacher_managed_classes(teacher_id: str) -> List[str]:
-    """해당 교사가 관리 중인 학급 목록을 가져옵니다."""
-    db = get_firestore_client()
-    default_classes = ["CLASS_2026_A"]
-    teacher_id = (teacher_id or "").strip() or "teacher_01"
-
-    if db:
-        try:
-            # 1. 문서 ID 직접 조회
-            doc = db.collection("users").document(teacher_id).get()
-            if doc.exists:
-                classes = doc.to_dict().get("managed_classes", [])
-                if classes:
-                    return list(dict.fromkeys(classes))
-
-            # 2. name 필드로 교사 문서 역추적
-            docs = list(db.collection("users").where("role", "==", "teacher").stream())
-            for d in docs:
-                data = d.to_dict()
-                if d.id == teacher_id or data.get("name") == teacher_id:
-                    classes = data.get("managed_classes", [])
-                    if classes:
-                        return list(dict.fromkeys(classes))
-        except Exception:
-            pass
-
-    mock_users = st.session_state.get("mock_users", {})
-    t_data = mock_users.get(teacher_id, {})
-    classes = t_data.get("managed_classes", [])
-    return list(dict.fromkeys(classes)) if classes else default_classes
-
-
-def create_new_class_for_teacher(teacher_id: str, new_class_code: str) -> tuple[bool, str]:
-    """신규 학급을 개설합니다. (문서가 없으면 자동 생성하여 절대 실패하지 않음)"""
-    new_class_code = new_class_code.strip()
-    if not new_class_code:
-        return False, "학급 코드를 입력해 주세요."
-
-    teacher_id = (teacher_id or "").strip() or "teacher_01"
-    db = get_firestore_client()
-
-    if db:
-        try:
-            t_ref = db.collection("users").document(teacher_id)
-            doc = t_ref.get()
-
-            # 문서가 없으면 교사 계정을 즉시 생성
-            if not doc.exists:
-                docs = list(db.collection("users").where("role", "==", "teacher").stream())
-                found = False
-                for d in docs:
-                    data = d.to_dict()
-                    if d.id == teacher_id or data.get("name") == teacher_id:
-                        t_ref = d.reference
-                        doc = d
-                        found = True
-                        break
-
-                if not found:
-                    payload = {
-                        "user_id": teacher_id,
-                        "name": teacher_id,
-                        "role": "teacher",
-                        "school_name": "한국고등학교",
-                        "managed_classes": ["CLASS_2026_A", new_class_code],
-                        "created_at": datetime.now().isoformat(),
-                    }
-                    t_ref.set(payload)
-                    return True, f"신규 학급 '{new_class_code}'이(가) 개설되었습니다."
-
-            # 기존 문서 갱신
-            cur_classes = list(doc.to_dict().get("managed_classes", ["CLASS_2026_A"]))
-            if new_class_code in cur_classes:
-                return False, f"이미 존재하는 학급 코드입니다: {new_class_code}"
-
-            cur_classes.append(new_class_code)
-            t_ref.update({"managed_classes": cur_classes})
-            return True, f"신규 학급 '{new_class_code}'이(가) 개설되었습니다."
-        except Exception as e:
-            return False, f"저장 실패: {str(e)}"
-
-    # Mock DB
-    mock_users = st.session_state.setdefault("mock_users", {})
-    t_data = mock_users.setdefault(teacher_id, {"role": "teacher", "managed_classes": ["CLASS_2026_A"]})
-    cur_classes = t_data.setdefault("managed_classes", ["CLASS_2026_A"])
-    if new_class_code in cur_classes:
-        return False, "이미 존재하는 학급 코드입니다."
-    cur_classes.append(new_class_code)
-    return True, f"신규 학급 '{new_class_code}'이(가) 개설되었습니다 (Mock)."

@@ -128,9 +128,8 @@ st.markdown(
 
 if st.session_state.get("authenticated", False):
     role_kr = "교사 (관리자)" if st.session_state.user_role == "teacher" else "학생"
-    display_user = st.session_state.get("user_name") or st.session_state.get("user_id")
     st.success(
-        f"현재 **{display_user}**님({role_kr})으로 로그인되어 있습니다. "
+        f"현재 **{st.session_state.user_name}**님({role_kr})으로 로그인되어 있습니다. "
         f"(학급: `{st.session_state.get('class_code', 'CLASS_2026_A')}`)"
     )
 
@@ -177,7 +176,6 @@ else:
                             if user_data and user_data.get("role") == "student":
                                 set_login_session(
                                     role="student",
-                                    user_id=student_id_input.strip(),
                                     user_name=user_data.get("name", student_id_input.strip()),
                                     class_code=user_data.get("class_code", class_code_or_pw.strip()),
                                 )
@@ -202,8 +200,7 @@ else:
                                 default_class = managed_classes[0] if managed_classes else "CLASS_2026_A"
                                 set_login_session(
                                     role="teacher",
-                                    user_id=teacher_id_input.strip(),
-                                    user_name=user_data.get("name", teacher_id_input.strip()),
+                                    user_name=teacher_id_input.strip(),
                                     class_code=default_class,
                                 )
                                 st.switch_page("pages/2_teacher_dashboard.py")
