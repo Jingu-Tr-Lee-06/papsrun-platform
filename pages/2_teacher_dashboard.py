@@ -194,8 +194,8 @@ with tab_course_control:
     st.markdown("---")
     st.markdown("#### 📡 현재 플랫폼 기상 데이터 수신 상태 점검")
 
-    # weather_engine을 통해 현재 적용 중인 실제 기상 데이터 조회
-    current_weather = get_effective_weather_data()
+    # 학교/지도 기본 좌표 (예: 충남 공주 36.4678, 127.1325)
+    current_weather = get_effective_weather_data(lat=36.4678, lng=127.1325)
     weather_status = current_weather.get("status", "UNKNOWN")
 
     col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
@@ -203,9 +203,18 @@ with tab_course_control:
         if weather_status == "LIVE_KMA_API":
             st.success("🟢 기상청 실시간 API 연동")
         elif weather_status == "TEACHER_OVERRIDE":
-            st.info("🔵 교사 강제 주입(Override) 활성")
+            st.info("🔵 교사 강제 주입(Override)")
+        elif weather_status == "API_NEED_APPLICATION":
+            st.error("🔴 API허브 활용신청 필요")
         else:
-            st.warning(f"🟡 {weather_status} (기본값 작동)")
+            st.warning(f"🟡 {weather_status}")
+
+    with col_stat2:
+        st.metric("연동 관측소", current_weather.get("station_name", "인접 관측소"))
+    with col_stat3:
+        st.metric("현재 기온", f"{current_weather.get('temp_c')} °C")
+    with col_stat4:
+        st.metric("전일사량", f"{current_weather.get('solar_w_m2')} W/m²")
 
     with col_stat2:
         st.metric("현재 적용 기온", f"{current_weather.get('temp_c')} °C")
