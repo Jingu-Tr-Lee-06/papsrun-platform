@@ -73,19 +73,31 @@ def sync_auth_session() -> None:
     st.session_state.class_code = "CLASS_2026_A"
 
 
-def set_login_session(role: str, user_id: str, user_name: str, class_code: str) -> None:
-    """로그인 시 세션 및 URL 서명 토큰에 기록합니다."""
+def set_login_session(
+    role: str,
+    user_name: str = "",
+    class_code: str = "CLASS_2026_A",
+    user_id: Optional[str] = None,
+    **kwargs: Any,
+) -> None:
+    """로그인 상태를 세션과 URL 파라미터(토큰)에 저장합니다.
+    
+    인자 순서나 개수(3개/4개) 차이로 인한 TypeError를 방지하도록 설계되었습니다.
+    """
+    actual_user_id = user_id or kwargs.get("user_id") or user_name
+    actual_user_name = user_name or actual_user_id
+
     st.session_state.authenticated = True
     st.session_state.user_role = role
-    st.session_state.user_id = user_id
-    st.session_state.user_name = user_name
+    st.session_state.user_id = actual_user_id
+    st.session_state.user_name = actual_user_name
     st.session_state.class_code = class_code
 
     payload = {
         "auth": True,
         "role": role,
-        "user_id": user_id,
-        "user_name": user_name,
+        "user_id": actual_user_id,
+        "user_name": actual_user_name,
         "class_code": class_code,
     }
     st.query_params["session_token"] = _generate_signed_token(payload)
