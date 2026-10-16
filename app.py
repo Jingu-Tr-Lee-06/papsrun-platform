@@ -1,8 +1,8 @@
 """PAPSrun 플랫폼 메인 랜딩 및 Firestore 통합 인증 모듈.
 
 캠퍼스 지형·환경물리 데이터와 NetworkX 그래프 기반 러닝 경로 최적화를 제공하며,
-Firestore users 컬렉션 연동을 통한 교사/학생 계정 생성, 로그인 인증 및
-역할 기반 안전 라우팅을 지원합니다.
+Firestore 기반 학생/교사 정식 로그인 및 신규 교사 계정 생성을 지원합니다.
+(학생 계정은 교사 대시보드의 JSON 일괄 등록을 통해 관리됩니다.)
 """
 
 from typing import Any, Dict, Optional
@@ -13,7 +13,6 @@ import streamlit as st
 from src.db.firebase_client import is_firestore_available
 from src.db.user_manager import (
     authenticate_user,
-    bulk_register_students_from_json,
     create_teacher_account,
 )
 from src.utils.auth_helper import (
@@ -68,7 +67,7 @@ st.set_page_config(
 # 세션 초기화 및 브라우저 세션 동기화
 sync_auth_session()
 
-# URL 쿼리 파라미터에서 기본 학급 코드 추출 (QR코드 접속 지원)
+# URL 쿼리 파라미터에서 기본 학급 코드 추출 (수업용 QR코드 접속 지원)
 qp = st.query_params
 url_class_code = qp.get("class_code", "CLASS_2026_A")
 
@@ -340,12 +339,10 @@ if st.session_state.get("authenticated", False):
             st.rerun()
 
 else:
-    # 로그인 / 신규 교사 가입 / 학생 개별 등록 탭 전환
+    # 로그인 및 신규 교사 등록 탭 구성 (학생 자율 가입 제거)
     _, center_col, _ = st.columns([1, 1.35, 1])
     with center_col:
-        tab_login, tab_student_signup, tab_teacher_signup = st.tabs(
-            ["🚀 로그인", "🙋 학생 계정 생성", "👨‍🏫 신규 교사 등록"]
-        )
+        tab_login, tab_teacher_signup = st.tabs(["🚀 로그인", "👨‍🏫 신규 교사 등록"])
 
         # ----------------------------------------------------------------------
         # TAB 1: 정식 로그인 (학생 / 교사)
@@ -366,8 +363,9 @@ else:
                     class_code_or_pw = st.text_input(
                         "학급 코드 또는 학생 비밀번호",
                         value=url_class_code,
-                        placeholder="발급받은 학급코드 또는 비밀번호 입력",
+                        placeholder="교사에게 안내받은 학급코드(또는 비밀번호) 입력",
                     )
+                    st.caption("💡 학생 계정은 담당 교사가 교사 대시보드에서 일괄 등록합니다.")
                     submitted = st.form_submit_button(
                         "학생 워크스페이스 입장 (Enter)",
                         type="primary",
@@ -429,59 +427,7 @@ else:
                                 st.error("교사 아이디 또는 비밀번호가 올바르지 않습니다.")
 
         # ----------------------------------------------------------------------
-        # TAB 2: 학생 즉시 계정 등록 (Self-Registration)
-        # ----------------------------------------------------------------------
-        with tab_student_signup:
-            st.caption("수업 담당 교사로부터 안내받은 공식 학급 코드를 입력하여 학생 계정을 등록합니다.")
-            with st.form("student_signup_form", clear_on_submit=False):
-                col_s1, col_s2 = st.columns(2)
-                with col_s1:
-                    new_student_id = st.text_input("학번 / 학생 ID", placeholder="예: 2026001")
-                    new_student_name = st.text_input("학생 성명", placeholder="예: 김철수")
-                with col_s2:
-                    new_student_class = st.text_input("공식 학급 코드", value=url_class_code)
-                    new_student_team = st.selectbox(
-                        "소속 모둠 (권역)",
-                        ["1조: 통학로", "2조: 운동장 트랙", "3조: 본관 사잇길", "4조: 교내 녹지 언덕"],
-                    )
-
-                new_student_paps = st.slider("본인 PAPS 심폐지구력 등급", min_value=1, max_value=5, value=3)
-                new_student_pw = st.text_input(
-                    "로그인 비밀번호 설정 (미입력 시 학급코드로 로그인)",
-                    type="password",
-                    placeholder="선택 사항",
-                )
-
-                st_submitted = st.form_submit_button("학생 계정 등록 완료", type="primary", use_container_width=True)
-                if st_submitted:
-                    if not new_student_id.strip() or not new_student_name.strip() or not new_student_class.strip():
-                        st.error("학번, 성명, 학급 코드는 필수 입력 항목입니다.")
-                    else:
-                        team_key = f"TEAM_{new_student_team.split('조')[0]}"
-                        student_json_payload = f"""
-                        [
-                            {{
-                                "student_id": "{new_student_id.strip()}",
-                                "name": "{new_student_name.strip()}",
-                                "class_code": "{new_student_class.strip()}",
-                                "team_id": "{team_key}",
-                                "paps_grade": {new_student_paps},
-                                "password": "{new_student_pw.strip() if new_student_pw.strip() else new_student_class.strip()}"
-                            }}
-                        ]
-                        """
-                        ok_cnt, fail_cnt, errs = bulk_register_students_from_json(
-                            json_content=student_json_payload,
-                            teacher_id="SELF_REGISTRATION",
-                            default_class_code=new_student_class.strip(),
-                        )
-                        if ok_cnt > 0:
-                            st.success(f"{new_student_name.strip()} 학생 계정이 등록되었습니다! [🚀 로그인] 탭으로 이동해 접속하세요.")
-                        else:
-                            st.error(f"등록 실패: {', '.join(errs)}")
-
-        # ----------------------------------------------------------------------
-        # TAB 3: 신규 교사 계정 생성
+        # TAB 2: 신규 교사 계정 생성
         # ----------------------------------------------------------------------
         with tab_teacher_signup:
             st.caption("학교에 배포된 기관 마스터 시크릿 키를 확인 후 교사 계정을 등록합니다.")
@@ -534,7 +480,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 5. 미니멀 라인 푸터 (회색 라인 분절형)
+# 5. 미니멀 라인 푸터
 st.markdown(
     f"""
     <div class="clean-footer">
