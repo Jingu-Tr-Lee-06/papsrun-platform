@@ -1,7 +1,8 @@
-"""PAPSrun 플랫폼 메인 랜딩 및 통합 역할 기반 인증(로그인) 모듈.
+"""PAPSrun 플랫폼 메인 랜딩 및 Firestore 통합 인증 모듈.
 
 캠퍼스 지형·환경물리 데이터와 NetworkX 그래프 기반 러닝 경로 최적화를 제공하며,
-st.query_params를 통한 새로고침 시 세션 유지 및 엔터키 로그인을 지원합니다.
+Firestore users 컬렉션 연동을 통한 교사 회원가입, 학생/교사 정식 로그인 및
+역할 기반 안전 라우팅을 지원합니다.
 """
 
 from typing import Any, Dict, Optional
@@ -9,15 +10,19 @@ import base64
 import os
 import streamlit as st
 
-# ==============================================================================
-# 1. 로고 이미지 설정 (png, ico, svg 파일 경로를 입력하세요)
-#    - 파일이 존재하면 해당 이미지를 로고로 표시하고, 없으면 기본 이모지(🏃)로 폴백합니다.
-# ==============================================================================
+from src.db.user_manager import (
+    authenticate_user,
+    create_teacher_account,
+)
+from src.utils.auth_helper import (
+    clear_login_session,
+    set_login_session,
+    sync_auth_session,
+)
+
+# 로고 이미지 및 글로벌 네비게이션 설정
 LOGO_IMAGE_PATH: str = "assets/logo.png"
 
-# ==============================================================================
-# 2. 상단 글로벌 네비게이션 링크 설정
-# ==============================================================================
 NAV_LINKS = {
     "플랫폼 소개": "https://www.notion.so",
     "지능형 도로망": "pages/1_student_workspace.py",
@@ -26,9 +31,6 @@ NAV_LINKS = {
     "교사 관제 센터": "pages/2_teacher_dashboard.py",
 }
 
-# ==============================================================================
-# 3. 하단 푸터 노션(Notion) 정책 페이지 링크 설정
-# ==============================================================================
 NOTION_TERMS_URL: str = "https://www.notion.so"
 NOTION_PRIVACY_URL: str = "https://www.notion.so"
 
@@ -54,7 +56,6 @@ def get_logo_html(image_path: str, default_emoji: str = "🏃") -> str:
     return f'<span style="font-size: 1.5rem; margin-right: 4px; vertical-align: middle;">{default_emoji}</span>'
 
 
-# 페이지 기본 설정
 st.set_page_config(
     page_title="PAPSrun - 지능형 캠퍼스 러닝 최적화 플랫폼",
     page_icon="🏃",
@@ -62,47 +63,25 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ==============================================================================
-# [새로고침 유지 로직] st.query_params를 통한 브라우저 새로고침 세션 복원
-# ==============================================================================
-qp = st.query_params
-
-if "authenticated" not in st.session_state:
-    # URL 쿼리 파라미터에 기존 인증 정보가 남아있는지 확인
-    if qp.get("auth") == "true" and qp.get("role") and qp.get("user"):
-        st.session_state.authenticated = True
-        st.session_state.user_role = qp.get("role")
-        st.session_state.user_name = qp.get("user")
-        st.session_state.class_code = qp.get("class_code", "KNU_2026_01")
-    else:
-        st.session_state.authenticated = False
-        st.session_state.user_role = None
-        st.session_state.user_name = ""
-        st.session_state.class_code = qp.get("class_code", "KNU_2026_01")
-else:
-    if "user_role" not in st.session_state:
-        st.session_state.user_role = None
-    if "user_name" not in st.session_state:
-        st.session_state.user_name = ""
-    if "class_code" not in st.session_state:
-        st.session_state.class_code = "KNU_2026_01"
+# 세션 초기화 및 브라우저 세션 동기화
+sync_auth_session()
 
 # 커스텀 모던 UI 및 스타일 주입
 st.markdown(
     """
     <style>
-    /* 1. 메인 랜딩 화면에서 좌측 사이드바 및 접기 버튼 숨김 */
+    /* 메인 랜딩 화면 좌측 사이드바 원천 숨김 */
     [data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"] {
         display: none !important;
     }
 
-    /* 2. 전체 페이지 가로 스크롤(오버플로우) 방지 */
+    /* 전체 페이지 가로 스크롤 방지 */
     html, body, [data-testid="stAppViewContainer"], .main {
         overflow-x: hidden !important;
         max-width: 100vw !important;
     }
 
-    /* 3. 본문 컨테이너 여백 최적화 (상단 바 고정 높이 반영) */
+    /* 본문 컨테이너 여백 최적화 (고정 상단바 64px 고려) */
     .block-container {
         padding-top: 5.5rem !important;
         padding-bottom: 2rem !important;
@@ -116,7 +95,7 @@ st.markdown(
         height: 0rem;
     }
 
-    /* 4. 상단 네비게이션 바: 화면 상단 고정 (Fixed Sticky Header) */
+    /* 상단 네비게이션 바: 고정형 */
     .top-nav {
         position: fixed;
         top: 0;
@@ -127,7 +106,7 @@ st.markdown(
         justify-content: space-between;
         align-items: center;
         padding: 0 max(2rem, calc((100vw - 1240px) / 2));
-        background: rgba(255, 255, 255, 0.92);
+        background: rgba(255, 255, 255, 0.94);
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
         border-bottom: 1px solid #e2e8f0;
@@ -167,7 +146,7 @@ st.markdown(
         color: #334155 !important;
     }
 
-    /* 5. 히어로 섹션 */
+    /* 히어로 섹션 */
     .hero-container {
         text-align: center;
         padding: 1.2rem 1rem 1.6rem 1rem;
@@ -194,7 +173,7 @@ st.markdown(
         margin-bottom: 1.8rem;
     }
 
-    /* 6. PAPSrun 통계 지표 카드 그리드 */
+    /* 통계 지표 카드 그리드 */
     .stat-container {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
@@ -219,7 +198,7 @@ st.markdown(
         color: #2563eb;
     }
 
-    /* 7. 하단 라인 푸터 (미니멀 회색 단선 분절) */
+    /* 미니멀 라인 푸터 */
     .clean-footer {
         width: 100%;
         margin-top: 4.0rem;
@@ -277,7 +256,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 1. 상단 글로벌 네비게이션 헤더 (Fixed 고정형)
+# 1. 상단 글로벌 네비게이션 헤더
 logo_markup = get_logo_html(LOGO_IMAGE_PATH)
 nav_links_html = "".join(
     f'<a class="nav-item" href="{url}" target="_blank" rel="noopener noreferrer">{title}</a>'
@@ -312,9 +291,12 @@ st.markdown(
 )
 
 # 3. 로그인 및 세션 라우팅
-if st.session_state.authenticated:
+if st.session_state.get("authenticated", False):
     role_kr = "교사 (관리자)" if st.session_state.user_role == "teacher" else "학생"
-    st.success(f"현재 **{st.session_state.user_name}**님({role_kr})으로 로그인되어 있습니다. (학급: `{st.session_state.class_code}`)")
+    st.success(
+        f"현재 **{st.session_state.user_name}**님({role_kr})으로 로그인되어 있습니다. "
+        f"(학급: `{st.session_state.get('class_code', 'CLASS_A')}`)"
+    )
 
     col_a, col_b, col_c = st.columns([1, 1, 1])
     with col_a:
@@ -328,87 +310,133 @@ if st.session_state.authenticated:
             st.info("교사 전용 대시보드는 교사 계정으로 로그인 시 열람 가능합니다.")
     with col_c:
         if st.button("로그아웃", use_container_width=True):
-            # 로그아웃 시 세션 상태 및 쿼리 파라미터 완전 초기화
-            st.session_state.authenticated = False
-            st.session_state.user_role = None
-            st.session_state.user_name = ""
-            st.query_params.clear()
+            clear_login_session()
             st.rerun()
 
 else:
-    # 중앙 정렬 로그인 카드
+    # 로그인 카드 및 교사 계정 생성 전환
     _, center_col, _ = st.columns([1, 1.3, 1])
     with center_col:
-        with st.expander("🚀 PAPSrun 시작하기 (로그인)", expanded=True):
-            login_role = st.radio(
-                "로그인 유형 선택",
-                ["학생으로 참여", "교사(관리자) 로그인"],
-                horizontal=True,
-            )
+        # 로그인 모드 / 교사 회원가입 모드 선택
+        action_mode = st.radio(
+            "시작 방식 선택",
+            ["PAPSrun 로그인", "신규 교사 계정 생성"],
+            horizontal=True,
+            label_visibility="collapsed",
+        )
 
-            with st.form("login_form", clear_on_submit=False):
-                class_code_input = st.text_input("학급 코드", value=st.session_state.class_code)
+        if action_mode == "PAPSrun 로그인":
+            with st.expander("🚀 PAPSrun 로그인", expanded=True):
+                role_choice = st.radio(
+                    "로그인 대상",
+                    ["학생 로그인", "교사(관리자) 로그인"],
+                    horizontal=True,
+                )
 
-                if login_role == "학생으로 참여":
-                    student_name_input = st.text_input(
-                        "학생 이름 또는 학번",
-                        placeholder="예: 20261001 홍길동",
-                    )
-                    submitted = st.form_submit_button(
-                        "학생 워크스페이스 입장 (Enter)",
-                        type="primary",
-                        use_container_width=True,
-                    )
-                    if submitted:
-                        if not student_name_input.strip():
-                            st.error("이름 또는 학번을 입력해 주세요.")
-                        elif not class_code_input.strip():
-                            st.error("학급 코드를 입력해 주세요.")
-                        else:
-                            st.session_state.authenticated = True
-                            st.session_state.user_role = "student"
-                            st.session_state.user_name = student_name_input.strip()
-                            st.session_state.class_code = class_code_input.strip()
+                with st.form("login_form", clear_on_submit=False):
+                    if role_choice == "학생 로그인":
+                        student_id_input = st.text_input(
+                            "학번 / 학생 ID",
+                            placeholder="예: 2026001",
+                        )
+                        class_code_or_pw = st.text_input(
+                            "학급 코드 (또는 학생 비밀번호)",
+                            placeholder="교사에게 발급받은 학급코드 입력 (예: CLASS_A)",
+                        )
+                        submitted = st.form_submit_button(
+                            "학생 워크스페이스 입장 (Enter)",
+                            type="primary",
+                            use_container_width=True,
+                        )
+                        if submitted:
+                            if not student_id_input.strip() or not class_code_or_pw.strip():
+                                st.error("학번과 학급 코드를 모두 입력해 주세요.")
+                            else:
+                                user_data = authenticate_user(
+                                    user_id=student_id_input.strip(),
+                                    password_or_code=class_code_or_pw.strip(),
+                                )
+                                if user_data and user_data.get("role") == "student":
+                                    set_login_session(
+                                        role="student",
+                                        user_name=user_data.get("name", student_id_input.strip()),
+                                        class_code=user_data.get("class_code", class_code_or_pw.strip()),
+                                    )
+                                    st.success(f"{user_data.get('name')} 학생 인증 완료!")
+                                    st.switch_page("pages/1_student_workspace.py")
+                                else:
+                                    st.error("등록되지 않은 학번이거나 학급 코드가 올바르지 않습니다.")
 
-                            # 새로고침 시 유지를 위한 쿼리 파라미터 저장
-                            st.query_params["auth"] = "true"
-                            st.query_params["role"] = "student"
-                            st.query_params["user"] = student_name_input.strip()
-                            st.query_params["class_code"] = class_code_input.strip()
+                    else:  # 교사 로그인
+                        teacher_id_input = st.text_input(
+                            "교사 아이디",
+                            placeholder="예: teacher_01",
+                        )
+                        teacher_pw_input = st.text_input(
+                            "비밀번호",
+                            type="password",
+                            placeholder="교사 계정 비밀번호 입력",
+                        )
+                        submitted = st.form_submit_button(
+                            "교사 권한으로 로그인 (Enter)",
+                            type="primary",
+                            use_container_width=True,
+                        )
+                        if submitted:
+                            if not teacher_id_input.strip() or not teacher_pw_input.strip():
+                                st.error("교사 아이디와 비밀번호를 입력해 주세요.")
+                            else:
+                                user_data = authenticate_user(
+                                    user_id=teacher_id_input.strip(),
+                                    password_or_code=teacher_pw_input.strip(),
+                                )
+                                if user_data and user_data.get("role") == "teacher":
+                                    # 관리 학급 첫 번째 항목 또는 기본값
+                                    managed_classes = user_data.get("managed_classes", [])
+                                    default_class = managed_classes[0] if managed_classes else "CLASS_A"
+                                    set_login_session(
+                                        role="teacher",
+                                        user_name=user_data.get("name", "담당 교사"),
+                                        class_code=default_class,
+                                    )
+                                    st.success(f"{user_data.get('name')} 선생님 환영합니다!")
+                                    st.switch_page("pages/2_teacher_dashboard.py")
+                                else:
+                                    st.error("교사 아이디 또는 비밀번호가 올바르지 않습니다.")
 
-                            st.switch_page("pages/1_student_workspace.py")
-
-                else:  # 교사 로그인
-                    teacher_key_input = st.text_input(
-                        "교사 인증 비밀번호 / 관리자 키",
+        else:
+            # 신규 교사 계정 생성 폼
+            with st.expander("📝 신규 교사 계정 생성", expanded=True):
+                st.caption("학교에 배포된 마스터 관리자 시크릿 키를 확인 후 교사 계정을 등록합니다.")
+                with st.form("teacher_signup_form", clear_on_submit=False):
+                    new_teacher_id = st.text_input("교사 아이디 (ID)", placeholder="예: teacher_2026")
+                    new_teacher_name = st.text_input("교사 성명", placeholder="예: 이진호")
+                    new_teacher_school = st.text_input("소속 학교", value="한국고등학교")
+                    new_teacher_pw = st.text_input("비밀번호 설정", type="password")
+                    admin_key_input = st.text_input(
+                        "교사 인증 시크릿 키 (관리자 키)",
                         type="password",
-                        placeholder="교사용 시크릿 키 입력",
+                        placeholder="기관 관리자 키 입력 (기본: teacher1234)",
                     )
-                    teacher_name_input = st.text_input("교사 성명", value="담당 교사")
-                    submitted = st.form_submit_button(
-                        "교사 권한으로 로그인 (Enter)",
+                    signup_submitted = st.form_submit_button(
+                        "교사 계정 생성 완료",
                         type="primary",
                         use_container_width=True,
                     )
-                    if submitted:
-                        correct_teacher_key = st.secrets.get("TEACHER_ACCESS_KEY", "teacher1234")
-                        if teacher_key_input in [correct_teacher_key, "knu2026", "teacher1234"]:
-                            st.session_state.authenticated = True
-                            st.session_state.user_role = "teacher"
-                            st.session_state.user_name = teacher_name_input.strip()
-                            st.session_state.class_code = class_code_input.strip()
-
-                            # 새로고침 시 유지를 위한 쿼리 파라미터 저장
-                            st.query_params["auth"] = "true"
-                            st.query_params["role"] = "teacher"
-                            st.query_params["user"] = teacher_name_input.strip()
-                            st.query_params["class_code"] = class_code_input.strip()
-
-                            st.switch_page("pages/2_teacher_dashboard.py")
+                    if signup_submitted:
+                        ok, msg = create_teacher_account(
+                            teacher_id=new_teacher_id,
+                            raw_password=new_teacher_pw,
+                            name=new_teacher_name,
+                            admin_secret_key=admin_key_input,
+                            school_name=new_teacher_school,
+                        )
+                        if ok:
+                            st.success(f"{msg} 이제 상단에서 'PAPSrun 로그인'을 선택해 접속하세요.")
                         else:
-                            st.error("교사 인증 비밀번호가 올바르지 않습니다.")
+                            st.error(msg)
 
-# 4. PAPSrun 통계 카드 그리드
+# 4. PAPSrun 시스템 고유 통계 카드 그리드
 st.markdown(
     """
     <div class="stat-container">
@@ -429,7 +457,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 5. 미니멀 라인 푸터
+# 5. 미니멀 라인 푸터 (회색 라인 분절형)
 st.markdown(
     f"""
     <div class="clean-footer">
