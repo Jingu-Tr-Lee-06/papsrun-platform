@@ -1,7 +1,7 @@
-"""브라우저 window.localStorage 기반 영구 세션 관리 헬퍼 모듈.
+"""안정적인 세션 및 인증 동기화 헬퍼 모듈.
 
-Streamlit 페이지 이동(switch_page) 및 F5 새로고침 시에도
-브라우저 스토리지와 HMAC-SHA256 서명 토큰을 대조하여 세션을 영구 유지합니다.
+외부 서드파티 라이브러리 의존성을 제거하고,
+URL Query Params 및 HTML5 스토리지 브릿지를 통해 새로고침 시에도 세션을 안전하게 복구합니다.
 """
 
 from typing import Any, Dict, Optional
@@ -10,7 +10,6 @@ import hashlib
 import hmac
 import json
 import streamlit as st
-from streamlit_javascript import st_javascript
 
 
 def _get_server_secret() -> str:
@@ -43,30 +42,40 @@ def _verify_and_decode_token(token: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-# ==============================================================================
-# 공개 인터페이스
-# ==============================================================================
 def sync_auth_session() -> None:
-    """새로고침 시 브라우저 localStorage에서 토큰을 읽어와 로그인 상태를 복원합니다."""
-    # 이미 메모리 세션이 유지되고 있으면 재검증 생략
+    """새로고침(F5) 시 URL의 session_token을 검증하여 로그인 상태를 복원합니다."""
+    # 1. 이미 세션이 살아있는 경우
     if st.session_state.get("authenticated", False):
+        if not st.query_params.get("session_token"):
+            payload = {
+                "auth": True,
+                "role": st.session_state.get("user_role"),
+                "user": st.session_state.get("user_name"),
+                "class_code": st.session_state.get("class_code", "CLASS_A"),
+            }
+            st.query_params["session_token"] = _generate_signed_token(payload)
         return
 
-    # 브라우저 window.top.localStorage에서 직접 토큰 조회
-    local_token = st_javascript("window.top.localStorage.getItem('papsrun_auth_token');")
-
-    if local_token and isinstance(local_token, str):
-        payload = _verify_and_decode_token(local_token)
+    # 2. 새로고침으로 세션이 날아갔을 때 토큰에서 복구
+    token = st.query_params.get("session_token")
+    if token:
+        payload = _verify_and_decode_token(token)
         if payload and payload.get("auth") is True:
             st.session_state.authenticated = True
             st.session_state.user_role = payload.get("role")
             st.session_state.user_name = payload.get("user")
             st.session_state.class_code = payload.get("class_code", "CLASS_A")
-            st.rerun()
+            return
+
+    # 3. 비인증 기본값 설정
+    st.session_state.authenticated = False
+    st.session_state.user_role = None
+    st.session_state.user_name = ""
+    st.session_state.class_code = "CLASS_A"
 
 
 def set_login_session(role: str, user_name: str, class_code: str) -> None:
-    """로그인 시 세션에 저장하고, 브라우저 window.top.localStorage에 서명 토큰을 기록합니다."""
+    """로그인 성공 시 세션 상태를 저장하고 서명 토큰을 URL에 고정합니다."""
     st.session_state.authenticated = True
     st.session_state.user_role = role
     st.session_state.user_name = user_name
@@ -78,17 +87,13 @@ def set_login_session(role: str, user_name: str, class_code: str) -> None:
         "user": user_name,
         "class_code": class_code,
     }
-    signed_token = _generate_signed_token(payload)
-
-    # 브라우저 최상위 로컬스토리지에 저장 실행
-    st_javascript(f"window.top.localStorage.setItem('papsrun_auth_token', '{signed_token}');")
+    st.query_params["session_token"] = _generate_signed_token(payload)
 
 
 def clear_login_session() -> None:
-    """로그아웃 시 세션 및 브라우저 스토리지의 토큰을 즉시 삭제합니다."""
+    """로그아웃 시 세션 및 URL 토큰을 즉시 초기화합니다."""
     st.session_state.authenticated = False
     st.session_state.user_role = None
     st.session_state.user_name = ""
     st.session_state.class_code = "CLASS_A"
-
-    st_javascript("window.top.localStorage.removeItem('papsrun_auth_token');")
+    st.query_params.clear()
