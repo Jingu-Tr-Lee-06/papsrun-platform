@@ -14,7 +14,7 @@ from src.db.user_manager import (
     get_students_by_class,
 )
 from src.utils.auth_helper import clear_login_session, sync_auth_session
-
+from src.geo.weather_engine import get_effective_weather_data
 # 1. 페이지 설정 및 세션 복원
 st.set_page_config(
     page_title="PAPSrun - 교사 관제 센터",
@@ -184,12 +184,38 @@ with tab_course_control:
         sim_temp = st.slider("가상 대기 기온 (°C)", 15.0, 38.0, 31.5, 0.5, disabled=not override_active)
         sim_solar = st.slider("가상 전일사량 (W/m²)", 100.0, 1100.0, 750.0, 25.0, disabled=not override_active)
 
-        # 💡 [추가] weather_engine.py와 동기화되는 세션 키 기록
+        # weather_engine과 연동되는 세션 키 기록
         st.session_state["weather_override"] = {
             "active": override_active,
             "temp_c": sim_temp,
             "solar_w_m2": sim_solar,
         }
+
+    st.markdown("---")
+    st.markdown("#### 📡 현재 플랫폼 기상 데이터 수신 상태 점검")
+
+    # weather_engine을 통해 현재 적용 중인 실제 기상 데이터 조회
+    current_weather = get_effective_weather_data()
+    weather_status = current_weather.get("status", "UNKNOWN")
+
+    col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
+    with col_stat1:
+        if weather_status == "LIVE_KMA_API":
+            st.success("🟢 기상청 실시간 API 연동")
+        elif weather_status == "TEACHER_OVERRIDE":
+            st.info("🔵 교사 강제 주입(Override) 활성")
+        else:
+            st.warning(f"🟡 {weather_status} (기본값 작동)")
+
+    with col_stat2:
+        st.metric("현재 적용 기온", f"{current_weather.get('temp_c')} °C")
+    with col_stat3:
+        st.metric("현재 적용 일사량", f"{current_weather.get('solar_w_m2')} W/m²")
+    with col_stat4:
+        st.metric("최종 갱신 시각", f"{current_weather.get('updated_at')}")
+
+    with st.expander("🔍 기상 원본 JSON 데이터 확인"):
+        st.json(current_weather)
 
 # ==============================================================================
 # TAB 3: 실시간 학습 현황
