@@ -1,7 +1,7 @@
 """PAPSrun 플랫폼 메인 랜딩 및 Firestore 통합 인증 모듈.
 
 캠퍼스 지형·환경물리 데이터와 NetworkX 그래프 기반 러닝 경로 최적화를 제공하며,
-Firestore users 컬렉션 연동을 통한 교사 회원가입, 학생/교사 정식 로그인 및
+Firestore users 컬렉션 연동을 통한 교사/학생 계정 생성, 로그인 인증 및
 역할 기반 안전 라우팅을 지원합니다.
 """
 
@@ -10,8 +10,10 @@ import base64
 import os
 import streamlit as st
 
+from src.db.firebase_client import is_firestore_available
 from src.db.user_manager import (
     authenticate_user,
+    bulk_register_students_from_json,
     create_teacher_account,
 )
 from src.utils.auth_helper import (
@@ -65,6 +67,10 @@ st.set_page_config(
 
 # 세션 초기화 및 브라우저 세션 동기화
 sync_auth_session()
+
+# URL 쿼리 파라미터에서 기본 학급 코드 추출 (QR코드 접속 지원)
+qp = st.query_params
+url_class_code = qp.get("class_code", "CLASS_2026_A")
 
 # 커스텀 모던 UI 및 스타일 주입
 st.markdown(
@@ -144,6 +150,20 @@ st.markdown(
     .nav-item:visited, .nav-item:active, .nav-item:focus {
         text-decoration: none !important;
         color: #334155 !important;
+    }
+
+    /* DB 헬스체크 배지 */
+    .db-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        padding: 4px 10px;
+        border-radius: 9999px;
+        background: #f1f5f9;
+        color: #475569;
+        border: 1px solid #e2e8f0;
     }
 
     /* 히어로 섹션 */
@@ -256,11 +276,17 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 1. 상단 글로벌 네비게이션 헤더
+# 1. 상단 글로벌 네비게이션 헤더 및 헬스 배지
 logo_markup = get_logo_html(LOGO_IMAGE_PATH)
 nav_links_html = "".join(
     f'<a class="nav-item" href="{url}" target="_blank" rel="noopener noreferrer">{title}</a>'
     for title, url in NAV_LINKS.items()
+)
+
+db_status_badge = (
+    '<span class="db-badge" style="border-color:#bbf7d0; background:#f0fdf4; color:#15803d;">● Cloud Firestore Online</span>'
+    if is_firestore_available()
+    else '<span class="db-badge" style="border-color:#fef08a; background:#fefce8; color:#854d0e;">○ Local InMemory Mode</span>'
 )
 
 st.markdown(
@@ -270,8 +296,8 @@ st.markdown(
         <div class="nav-links">
             {nav_links_html}
         </div>
-        <div style="font-size: 0.88rem; color: #64748b; font-weight: 600;">
-            스마트 러닝 에듀테크 시스템
+        <div style="display:flex; align-items:center; gap:12px;">
+            {db_status_badge}
         </div>
     </div>
     """,
@@ -314,127 +340,178 @@ if st.session_state.get("authenticated", False):
             st.rerun()
 
 else:
-    # 로그인 카드 및 교사 계정 생성 전환
-    _, center_col, _ = st.columns([1, 1.3, 1])
+    # 로그인 / 신규 교사 가입 / 학생 개별 등록 탭 전환
+    _, center_col, _ = st.columns([1, 1.35, 1])
     with center_col:
-        # 로그인 모드 / 교사 회원가입 모드 선택
-        action_mode = st.radio(
-            "시작 방식 선택",
-            ["PAPSrun 로그인", "신규 교사 계정 생성"],
-            horizontal=True,
-            label_visibility="collapsed",
+        tab_login, tab_student_signup, tab_teacher_signup = st.tabs(
+            ["🚀 로그인", "🙋 학생 계정 생성", "👨‍🏫 신규 교사 등록"]
         )
 
-        if action_mode == "PAPSrun 로그인":
-            with st.expander("🚀 PAPSrun 로그인", expanded=True):
-                role_choice = st.radio(
-                    "로그인 대상",
-                    ["학생 로그인", "교사(관리자) 로그인"],
-                    horizontal=True,
-                )
+        # ----------------------------------------------------------------------
+        # TAB 1: 정식 로그인 (학생 / 교사)
+        # ----------------------------------------------------------------------
+        with tab_login:
+            role_choice = st.radio(
+                "로그인 대상",
+                ["학생 로그인", "교사(관리자) 로그인"],
+                horizontal=True,
+            )
 
-                with st.form("login_form", clear_on_submit=False):
-                    if role_choice == "학생 로그인":
-                        student_id_input = st.text_input(
-                            "학번 / 학생 ID",
-                            placeholder="예: 2026001",
-                        )
-                        class_code_or_pw = st.text_input(
-                            "학급 코드 (또는 학생 비밀번호)",
-                            placeholder="교사에게 발급받은 학급코드 입력 (예: CLASS_A)",
-                        )
-                        submitted = st.form_submit_button(
-                            "학생 워크스페이스 입장 (Enter)",
-                            type="primary",
-                            use_container_width=True,
-                        )
-                        if submitted:
-                            if not student_id_input.strip() or not class_code_or_pw.strip():
-                                st.error("학번과 학급 코드를 모두 입력해 주세요.")
-                            else:
-                                user_data = authenticate_user(
-                                    user_id=student_id_input.strip(),
-                                    password_or_code=class_code_or_pw.strip(),
-                                )
-                                if user_data and user_data.get("role") == "student":
-                                    set_login_session(
-                                        role="student",
-                                        user_name=user_data.get("name", student_id_input.strip()),
-                                        class_code=user_data.get("class_code", class_code_or_pw.strip()),
-                                    )
-                                    st.success(f"{user_data.get('name')} 학생 인증 완료!")
-                                    st.switch_page("pages/1_student_workspace.py")
-                                else:
-                                    st.error("등록되지 않은 학번이거나 학급 코드가 올바르지 않습니다.")
-
-                    else:  # 교사 로그인
-                        teacher_id_input = st.text_input(
-                            "교사 아이디",
-                            placeholder="예: teacher_01",
-                        )
-                        teacher_pw_input = st.text_input(
-                            "비밀번호",
-                            type="password",
-                            placeholder="교사 계정 비밀번호 입력",
-                        )
-                        submitted = st.form_submit_button(
-                            "교사 권한으로 로그인 (Enter)",
-                            type="primary",
-                            use_container_width=True,
-                        )
-                        if submitted:
-                            if not teacher_id_input.strip() or not teacher_pw_input.strip():
-                                st.error("교사 아이디와 비밀번호를 입력해 주세요.")
-                            else:
-                                user_data = authenticate_user(
-                                    user_id=teacher_id_input.strip(),
-                                    password_or_code=teacher_pw_input.strip(),
-                                )
-                                if user_data and user_data.get("role") == "teacher":
-                                    # 관리 학급 첫 번째 항목 또는 기본값
-                                    managed_classes = user_data.get("managed_classes", [])
-                                    default_class = managed_classes[0] if managed_classes else "CLASS_A"
-                                    set_login_session(
-                                        role="teacher",
-                                        user_name=user_data.get("name", "담당 교사"),
-                                        class_code=default_class,
-                                    )
-                                    st.success(f"{user_data.get('name')} 선생님 환영합니다!")
-                                    st.switch_page("pages/2_teacher_dashboard.py")
-                                else:
-                                    st.error("교사 아이디 또는 비밀번호가 올바르지 않습니다.")
-
-        else:
-            # 신규 교사 계정 생성 폼
-            with st.expander("📝 신규 교사 계정 생성", expanded=True):
-                st.caption("학교에 배포된 마스터 관리자 시크릿 키를 확인 후 교사 계정을 등록합니다.")
-                with st.form("teacher_signup_form", clear_on_submit=False):
-                    new_teacher_id = st.text_input("교사 아이디 (ID)", placeholder="예: teacher_2026")
-                    new_teacher_name = st.text_input("교사 성명", placeholder="예: 이진호")
-                    new_teacher_school = st.text_input("소속 학교", value="한국고등학교")
-                    new_teacher_pw = st.text_input("비밀번호 설정", type="password")
-                    admin_key_input = st.text_input(
-                        "교사 인증 시크릿 키 (관리자 키)",
-                        type="password",
-                        placeholder="기관 관리자 키 입력 (기본: teacher1234)",
+            with st.form("login_form", clear_on_submit=False):
+                if role_choice == "학생 로그인":
+                    student_id_input = st.text_input(
+                        "학번 / 학생 ID",
+                        placeholder="예: 2026001",
                     )
-                    signup_submitted = st.form_submit_button(
-                        "교사 계정 생성 완료",
+                    class_code_or_pw = st.text_input(
+                        "학급 코드 또는 학생 비밀번호",
+                        value=url_class_code,
+                        placeholder="발급받은 학급코드 또는 비밀번호 입력",
+                    )
+                    submitted = st.form_submit_button(
+                        "학생 워크스페이스 입장 (Enter)",
                         type="primary",
                         use_container_width=True,
                     )
-                    if signup_submitted:
-                        ok, msg = create_teacher_account(
-                            teacher_id=new_teacher_id,
-                            raw_password=new_teacher_pw,
-                            name=new_teacher_name,
-                            admin_secret_key=admin_key_input,
-                            school_name=new_teacher_school,
-                        )
-                        if ok:
-                            st.success(f"{msg} 이제 상단에서 'PAPSrun 로그인'을 선택해 접속하세요.")
+                    if submitted:
+                        if not student_id_input.strip() or not class_code_or_pw.strip():
+                            st.error("학번과 학급 코드를 모두 입력해 주세요.")
                         else:
-                            st.error(msg)
+                            user_data = authenticate_user(
+                                user_id=student_id_input.strip(),
+                                password_or_code=class_code_or_pw.strip(),
+                            )
+                            if user_data and user_data.get("role") == "student":
+                                set_login_session(
+                                    role="student",
+                                    user_name=user_data.get("name", student_id_input.strip()),
+                                    class_code=user_data.get("class_code", class_code_or_pw.strip()),
+                                )
+                                st.success(f"{user_data.get('name')} 학생 인증 완료!")
+                                st.switch_page("pages/1_student_workspace.py")
+                            else:
+                                st.error("등록되지 않은 학번이거나 학급 코드가 올바르지 않습니다.")
+
+                else:  # 교사 로그인
+                    teacher_id_input = st.text_input(
+                        "교사 아이디",
+                        placeholder="예: teacher_01",
+                    )
+                    teacher_pw_input = st.text_input(
+                        "비밀번호",
+                        type="password",
+                        placeholder="교사 계정 비밀번호 입력",
+                    )
+                    submitted = st.form_submit_button(
+                        "교사 권한으로 로그인 (Enter)",
+                        type="primary",
+                        use_container_width=True,
+                    )
+                    if submitted:
+                        if not teacher_id_input.strip() or not teacher_pw_input.strip():
+                            st.error("교사 아이디와 비밀번호를 입력해 주세요.")
+                        else:
+                            user_data = authenticate_user(
+                                user_id=teacher_id_input.strip(),
+                                password_or_code=teacher_pw_input.strip(),
+                            )
+                            if user_data and user_data.get("role") == "teacher":
+                                managed_classes = user_data.get("managed_classes", [])
+                                default_class = managed_classes[0] if managed_classes else "CLASS_2026_A"
+                                set_login_session(
+                                    role="teacher",
+                                    user_name=user_data.get("name", "담당 교사"),
+                                    class_code=default_class,
+                                )
+                                st.success(f"{user_data.get('name')} 선생님 환영합니다!")
+                                st.switch_page("pages/2_teacher_dashboard.py")
+                            else:
+                                st.error("교사 아이디 또는 비밀번호가 올바르지 않습니다.")
+
+        # ----------------------------------------------------------------------
+        # TAB 2: 학생 즉시 계정 등록 (Self-Registration)
+        # ----------------------------------------------------------------------
+        with tab_student_signup:
+            st.caption("수업 담당 교사로부터 안내받은 공식 학급 코드를 입력하여 학생 계정을 등록합니다.")
+            with st.form("student_signup_form", clear_on_submit=False):
+                col_s1, col_s2 = st.columns(2)
+                with col_s1:
+                    new_student_id = st.text_input("학번 / 학생 ID", placeholder="예: 2026001")
+                    new_student_name = st.text_input("학생 성명", placeholder="예: 김철수")
+                with col_s2:
+                    new_student_class = st.text_input("공식 학급 코드", value=url_class_code)
+                    new_student_team = st.selectbox(
+                        "소속 모둠 (권역)",
+                        ["1조: 통학로", "2조: 운동장 트랙", "3조: 본관 사잇길", "4조: 교내 녹지 언덕"],
+                    )
+
+                new_student_paps = st.slider("본인 PAPS 심폐지구력 등급", min_value=1, max_value=5, value=3)
+                new_student_pw = st.text_input(
+                    "로그인 비밀번호 설정 (미입력 시 학급코드로 로그인)",
+                    type="password",
+                    placeholder="선택 사항",
+                )
+
+                st_submitted = st.form_submit_button("학생 계정 등록 완료", type="primary", use_container_width=True)
+                if st_submitted:
+                    if not new_student_id.strip() or not new_student_name.strip() or not new_student_class.strip():
+                        st.error("학번, 성명, 학급 코드는 필수 입력 항목입니다.")
+                    else:
+                        team_key = f"TEAM_{new_student_team.split('조')[0]}"
+                        student_json_payload = f"""
+                        [
+                            {{
+                                "student_id": "{new_student_id.strip()}",
+                                "name": "{new_student_name.strip()}",
+                                "class_code": "{new_student_class.strip()}",
+                                "team_id": "{team_key}",
+                                "paps_grade": {new_student_paps},
+                                "password": "{new_student_pw.strip() if new_student_pw.strip() else new_student_class.strip()}"
+                            }}
+                        ]
+                        """
+                        ok_cnt, fail_cnt, errs = bulk_register_students_from_json(
+                            json_content=student_json_payload,
+                            teacher_id="SELF_REGISTRATION",
+                            default_class_code=new_student_class.strip(),
+                        )
+                        if ok_cnt > 0:
+                            st.success(f"{new_student_name.strip()} 학생 계정이 등록되었습니다! [🚀 로그인] 탭으로 이동해 접속하세요.")
+                        else:
+                            st.error(f"등록 실패: {', '.join(errs)}")
+
+        # ----------------------------------------------------------------------
+        # TAB 3: 신규 교사 계정 생성
+        # ----------------------------------------------------------------------
+        with tab_teacher_signup:
+            st.caption("학교에 배포된 기관 마스터 시크릿 키를 확인 후 교사 계정을 등록합니다.")
+            with st.form("teacher_signup_form", clear_on_submit=False):
+                new_teacher_id = st.text_input("교사 아이디 (ID)", placeholder="예: teacher_2026")
+                new_teacher_name = st.text_input("교사 성명", placeholder="예: 이진호")
+                new_teacher_school = st.text_input("소속 학교", value="한국고등학교")
+                new_teacher_pw = st.text_input("비밀번호 설정", type="password")
+                admin_key_input = st.text_input(
+                    "교사 인증 시크릿 키 (관리자 키)",
+                    type="password",
+                    placeholder="기본값: teacher1234",
+                )
+                signup_submitted = st.form_submit_button(
+                    "교사 계정 생성 완료",
+                    type="primary",
+                    use_container_width=True,
+                )
+                if signup_submitted:
+                    ok, msg = create_teacher_account(
+                        teacher_id=new_teacher_id,
+                        raw_password=new_teacher_pw,
+                        name=new_teacher_name,
+                        admin_secret_key=admin_key_input,
+                        school_name=new_teacher_school,
+                    )
+                    if ok:
+                        st.success(f"{msg} [🚀 로그인] 탭으로 이동해 교사 로그인을 진행하세요.")
+                    else:
+                        st.error(msg)
 
 # 4. PAPSrun 시스템 고유 통계 카드 그리드
 st.markdown(
