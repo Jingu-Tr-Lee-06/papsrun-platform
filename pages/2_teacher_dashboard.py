@@ -184,6 +184,13 @@ with tab_course_control:
         sim_temp = st.slider("가상 대기 기온 (°C)", 15.0, 38.0, 31.5, 0.5, disabled=not override_active)
         sim_solar = st.slider("가상 전일사량 (W/m²)", 100.0, 1100.0, 750.0, 25.0, disabled=not override_active)
 
+        # 💡 [추가] weather_engine.py와 동기화되는 세션 키 기록
+        st.session_state["weather_override"] = {
+            "active": override_active,
+            "temp_c": sim_temp,
+            "solar_w_m2": sim_solar,
+        }
+
 # ==============================================================================
 # TAB 3: 실시간 학습 현황
 # ==============================================================================
