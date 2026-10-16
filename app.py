@@ -1,4 +1,8 @@
-"""PAPSrun 플랫폼 메인 랜딩 및 Firestore 통합 인증 모듈."""
+"""PAPSrun 플랫폼 메인 랜딩 및 Firestore 통합 인증 모듈.
+
+캠퍼스 지형·환경물리 데이터와 NetworkX 그래프 기반 러닝 경로 최적화를 제공하며,
+Firestore 기반 학생/교사 정식 로그인 및 신규 교사 계정 생성을 지원합니다.
+"""
 
 from typing import Any, Dict, Optional
 import base64
@@ -50,6 +54,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# 브라우저 새로고침 시 세션 복원
 sync_auth_session()
 
 qp = st.query_params
@@ -126,10 +131,12 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# 로그인 상태 분기
 if st.session_state.get("authenticated", False):
     role_kr = "교사 (관리자)" if st.session_state.user_role == "teacher" else "학생"
+    display_user = st.session_state.get("user_name") or st.session_state.get("user_id")
     st.success(
-        f"현재 **{st.session_state.user_name}**님({role_kr})으로 로그인되어 있습니다. "
+        f"현재 **{display_user}**님({role_kr})으로 로그인되어 있습니다. "
         f"(학급: `{st.session_state.get('class_code', 'CLASS_2026_A')}`)"
     )
 
