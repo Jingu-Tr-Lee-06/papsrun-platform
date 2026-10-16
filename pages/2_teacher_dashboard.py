@@ -37,7 +37,9 @@ if not st.session_state.get("authenticated", False) or st.session_state.get("use
         st.switch_page("app.py")
     st.stop()
 
-teacher_id = st.session_state.get("user_name", "teacher_01")
+# 교사 식별자 우선 바인딩 (user_id 우선, user_name 보조)
+teacher_id = st.session_state.get("user_id") or st.session_state.get("user_name", "teacher_01")
+teacher_display_name = st.session_state.get("user_name", teacher_id)
 
 # 교사가 보유한 학급 목록 가져오기
 managed_classes = get_teacher_managed_classes(teacher_id)
@@ -47,7 +49,7 @@ if not managed_classes:
 # 3. 사이드바: 학급 드롭다운 선택 및 신규 학급 개설
 with st.sidebar:
     st.markdown("### 👨‍🏫 교사 관제 콘솔")
-    st.write(f"**담당 교사**: {teacher_id}")
+    st.write(f"**담당 교사**: {teacher_display_name} (`{teacher_id}`)")
 
     st.markdown("---")
     st.markdown("#### 🏫 학급 선택 (드롭다운)")
@@ -111,7 +113,6 @@ tab_students, tab_course_control, tab_analytics = st.tabs(
 with tab_students:
     st.subheader(f"📋 `{current_class}` 학생 명단 조회 및 관리")
 
-    # 선택된 학급의 학생 목록 불러오기
     students_list = get_students_by_class(current_class)
 
     col_view, col_upload = st.columns([1.3, 1])
@@ -139,7 +140,6 @@ with tab_students:
                 hide_index=True,
             )
 
-            # 학생 개별 삭제 & 학급 전체 학생 비우기
             col_d1, col_d2 = st.columns(2)
             with col_d1:
                 with st.expander("🗑️ 학생 개별 삭제"):
