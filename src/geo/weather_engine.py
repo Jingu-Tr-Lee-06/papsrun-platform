@@ -1,26 +1,19 @@
-"""기상청 API허브 연동 및 지표 흡수 복사에너지 연산 모듈.
+"""기상청 API허브 연동 및 지표 흡수 복사에너지 연산 모듈."""
 
-실시간 기상 데이터(기온, 일사량) 수신 및 노면 피복별 알베도(Albedo) 수리 계산을 수행합니다.
-네트워크 오류나 수업 시뮬레이션 필요 시 교사 Override 값을 우선 적용하는 Fail-Safe를 내장합니다.
-"""
-
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 import requests
 import streamlit as st
 
-
-# 1. 노면 피복별 표준 알베도(Albedo, 반사율) 상수 정의
 SURFACE_ALBEDO_MAP: Dict[str, float] = {
-    "asphalt": 0.10,       # 신설/일반 아스팔트 (흡수율 90%)
-    "urethane": 0.20,      # 우레탄 탄성 포장 트랙
-    "concrete": 0.30,      # 콘크리트 보도블록
-    "dirt": 0.25,          # 흙길/비포장
-    "shaded_dirt": 0.25,   # 수관 차광 녹지 흙길 (일사량 80% 차감 보정)
-    "grass": 0.22,         # 잔디밭
+    "asphalt": 0.10,
+    "urethane": 0.20,
+    "concrete": 0.30,
+    "dirt": 0.25,
+    "shaded_dirt": 0.25,
+    "grass": 0.22,
 }
 
-# 기본 기상 백업값 (한여름 폭염 시뮬레이션 기준)
 FALLBACK_WEATHER: Dict[str, Any] = {
     "temp_c": 31.5,
     "solar_w_m2": 750.0,
@@ -29,90 +22,116 @@ FALLBACK_WEATHER: Dict[str, Any] = {
 }
 
 
+@st.cache_data(ttl=600)  # 10분 캐싱 (불필요한 반복 호출 및 타임아웃 방지)
+def _request_kma_api(station_id: str, api_key: str, tm_str: str) -> Dict[str, Any]:
+    # 기상청 API허브 종관기상관측(ASOS) 단일 관측지점 실시간 조회
+    url = "https://apihub.kma.go.kr/api/typ01/url/kma_sfctm2.php"
+    params = {
+        "tm": tm_str,
+        "stn": station_id,
+        "help": "0",
+        "authKey": api_key,
+    }
+    
+    # connect timeout 3초, read timeout 5초 분리
+    response = requests.get(url, params=params, timeout=(3.0, 5.0))
+    return {
+        "status_code": response.status_code,
+        "text": response.text,
+    }
+
+
 def fetch_kma_weather_data(
-    station_id: str = "108",  # 기본 108: 서울 (공주/충남 등 타 지역 관측소 코드로 변경 가능)
+    station_id: str = "108",  # 108: 서울 (공주는 235 등 관측소 번호 지정 가능)
     api_key: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """기상청 API허브에서 실시간 기온과 전일사량 데이터를 수신합니다."""
+    """기상청 API허브에서 실시간 기온 및 전일사량을 수신합니다."""
     key = api_key or st.secrets.get("KMA_API_KEY", "")
     if not key:
         return {
             **FALLBACK_WEATHER,
             "status": "NO_API_KEY_MOCK",
             "updated_at": datetime.now().strftime("%H:%M:%S"),
-            "msg": "st.secrets에 KMA_API_KEY가 설정되지 않았습니다.",
+            "msg": "st.secrets에 KMA_API_KEY가 없습니다.",
         }
 
-    url = "https://apihub.kma.go.kr/api/typ01/url/kma_sfctm2.php"
-    params = {
-        "stn": station_id,
-        "help": "0",
-        "authKey": key,
-    }
+    # 최근 10~20분 전 데이터 조회 (기상청 정시/10분 단위 집계 지연 고려)
+    now = datetime.now() - timedelta(minutes=15)
+    minute_bucket = (now.minute // 10) * 10
+    target_time = now.replace(minute=minute_bucket, second=0, microsecond=0)
+    tm_str = target_time.strftime("%Y%m%d%H%M")
 
     try:
-        # 타임아웃을 6.0초로 여유 있게 설정
-        response = requests.get(url, params=params, timeout=6.0)
-        
-        # 기상청 에러 메시지 검출 (인증 실패 등)
-        if "INVALID" in response.text or "ERROR" in response.text:
+        res = _request_kma_api(station_id, key.strip(), tm_str)
+        text = res.get("text", "")
+
+        if "INVALID" in text or "AUTH" in text or "DISALLOW" in text:
             return {
                 **FALLBACK_WEATHER,
                 "status": "API_AUTH_ERROR",
-                "raw_response": response.text[:150],
+                "raw_preview": text[:200],
+                "request_tm": tm_str,
                 "updated_at": datetime.now().strftime("%H:%M:%S"),
             }
 
-        if response.status_code == 200:
-            lines = [line.strip() for line in response.text.split("\n") if line.strip() and not line.startswith("#")]
-            if lines:
-                tokens = lines[-1].split()
-                # 기상청 ASOS 전문: tokens[11] = 기온, tokens[14] or [15] = 일사량
-                temp = 31.0
-                if len(tokens) > 11 and tokens[11] not in ["-99.0", "-99"]:
+        lines = [line.strip() for line in text.split("\n") if line.strip() and not line.startswith("#")]
+        if lines:
+            tokens = lines[-1].split()
+            # ASOS 관측 포맷: tokens[11]=기온, tokens[14] or [15]=일사량
+            temp = 31.5
+            if len(tokens) > 11 and tokens[11] not in ["-99.0", "-99"]:
+                try:
                     temp = float(tokens[11])
+                except ValueError:
+                    pass
 
-                solar_w = 700.0
-                # 일사량 컬럼 탐색 (기상청 일사량 결측치 대응)
-                if len(tokens) > 15 and tokens[15] not in ["-99.0", "-99"]:
-                    raw_solar_mj = float(tokens[15])
-                    solar_w = round(raw_solar_mj * 277.78, 1) if raw_solar_mj > 0 else 700.0
-                elif len(tokens) > 14 and tokens[14] not in ["-99.0", "-99"]:
-                    raw_solar_mj = float(tokens[14])
-                    solar_w = round(raw_solar_mj * 277.78, 1) if raw_solar_mj > 0 else 700.0
+            solar_w = 750.0
+            for idx in [15, 14]:
+                if len(tokens) > idx and tokens[idx] not in ["-99.0", "-99"]:
+                    try:
+                        raw_solar = float(tokens[idx])
+                        solar_w = round(raw_solar * 277.78, 1) if raw_solar > 0 else 0.0
+                        break
+                    except ValueError:
+                        pass
 
-                return {
-                    "temp_c": temp,
-                    "solar_w_m2": solar_w,
-                    "status": "LIVE_KMA_API",
-                    "station_id": station_id,
-                    "updated_at": datetime.now().strftime("%H:%M:%S"),
-                }
+            return {
+                "temp_c": temp,
+                "solar_w_m2": solar_w,
+                "status": "LIVE_KMA_API",
+                "station_id": station_id,
+                "request_tm": tm_str,
+                "updated_at": datetime.now().strftime("%H:%M:%S"),
+            }
+
+        return {
+            **FALLBACK_WEATHER,
+            "status": "API_EMPTY_DATA",
+            "raw_preview": text[:200],
+            "request_tm": tm_str,
+            "updated_at": datetime.now().strftime("%H:%M:%S"),
+        }
+
     except requests.exceptions.Timeout:
         return {
             **FALLBACK_WEATHER,
             "status": "API_TIMEOUT_MOCK",
-            "msg": "기상청 서버 응답 지연 (6초 초과)",
+            "msg": "기상청 서버 응답 지연 (해외 클라우드 IP 지연 또는 네트워크 타임아웃)",
+            "request_tm": tm_str,
             "updated_at": datetime.now().strftime("%H:%M:%S"),
         }
     except Exception as e:
         return {
             **FALLBACK_WEATHER,
-            "status": "API_PARSE_ERROR",
+            "status": "API_ERROR",
             "error_detail": str(e),
             "updated_at": datetime.now().strftime("%H:%M:%S"),
         }
 
-    return {
-        **FALLBACK_WEATHER,
-        "status": "API_EMPTY_RESPONSE",
-        "updated_at": datetime.now().strftime("%H:%M:%S"),
-    }
-
 
 def get_effective_weather_data(override_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """교사 강제 주입(Override) 활성화 여부를 판별하여 최종 기상 환경을 반환합니다."""
-    # 1. 교사 대시보드에서 강제 주입이 활성화된 경우 (1순위 우선권)
+    # 1. 인자로 넘어온 Override
     if override_config and override_config.get("active"):
         return {
             "temp_c": float(override_config.get("temp_c", 31.5)),
@@ -121,7 +140,7 @@ def get_effective_weather_data(override_config: Optional[Dict[str, Any]] = None)
             "updated_at": datetime.now().strftime("%H:%M:%S"),
         }
 
-    # 2. 세션 상태에 저장된 교사 설정 확인
+    # 2. 교사 대시보드 세션에 기록된 Override
     teacher_override = st.session_state.get("weather_override")
     if teacher_override and teacher_override.get("active"):
         return {
@@ -131,7 +150,7 @@ def get_effective_weather_data(override_config: Optional[Dict[str, Any]] = None)
             "updated_at": datetime.now().strftime("%H:%M:%S"),
         }
 
-    # 3. 실시간 기상청 API 호출
+    # 3. 실시간 기상청 API
     return fetch_kma_weather_data()
 
 
@@ -140,16 +159,9 @@ def calculate_absorbed_radiation(
     surface_type: str,
     tree_canopy_cover: float = 0.0,
 ) -> Dict[str, float]:
-    """
-    노면 피복과 차광률을 적용하여 순흡수 복사에너지(R_abs)를 계산합니다.
-    수식: R_abs = I_effective * (1 - albedo)
-    """
+    """지표면 흡수 복사에너지 R_abs = I_eff * (1 - alpha) 계산"""
     albedo = SURFACE_ALBEDO_MAP.get(surface_type.lower(), 0.15)
-
-    # 수관 차광(나무 그늘)에 따른 유효 도달 일사량 감쇄 (차광률 0.0 ~ 0.95)
     effective_solar = solar_w_m2 * (1.0 - max(0.0, min(0.95, tree_canopy_cover)))
-
-    # 지표면 흡수 복사에너지 계산
     absorbed_rad = effective_solar * (1.0 - albedo)
 
     return {
