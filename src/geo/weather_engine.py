@@ -30,20 +30,19 @@ FALLBACK_WEATHER: Dict[str, Any] = {
 
 
 def fetch_kma_weather_data(
-    station_id: str = "108",  # 기본 관측 지점 (108: 서울/수도권, 학교 위치에 맞춰 조정 가능)
+    station_id: str = "108",  # 기본 108: 서울 (공주/충남 등 타 지역 관측소 코드로 변경 가능)
     api_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     """기상청 API허브에서 실시간 기온과 전일사량 데이터를 수신합니다."""
-    # st.secrets에 등록된 기상청 API 키 확인
     key = api_key or st.secrets.get("KMA_API_KEY", "")
     if not key:
         return {
             **FALLBACK_WEATHER,
             "status": "NO_API_KEY_MOCK",
             "updated_at": datetime.now().strftime("%H:%M:%S"),
+            "msg": "st.secrets에 KMA_API_KEY가 설정되지 않았습니다.",
         }
 
-    # 기상청 API허브 종관기상관측(ASOS) 실시간 조회 엔드포인트
     url = "https://apihub.kma.go.kr/api/typ01/url/kma_sfctm2.php"
     params = {
         "stn": station_id,
@@ -52,17 +51,35 @@ def fetch_kma_weather_data(
     }
 
     try:
-        response = requests.get(url, params=params, timeout=3.5)
+        # 타임아웃을 6.0초로 여유 있게 설정
+        response = requests.get(url, params=params, timeout=6.0)
+        
+        # 기상청 에러 메시지 검출 (인증 실패 등)
+        if "INVALID" in response.text or "ERROR" in response.text:
+            return {
+                **FALLBACK_WEATHER,
+                "status": "API_AUTH_ERROR",
+                "raw_response": response.text[:150],
+                "updated_at": datetime.now().strftime("%H:%M:%S"),
+            }
+
         if response.status_code == 200:
             lines = [line.strip() for line in response.text.split("\n") if line.strip() and not line.startswith("#")]
             if lines:
-                # 관측 데이터 파싱 (기상청 전문 스펙: 인덱스 11번 기온, 15번 일사량 등)
                 tokens = lines[-1].split()
-                # 기온 (°C)
-                temp = float(tokens[11]) if len(tokens) > 11 and tokens[11] != "-99.0" else 31.0
-                # 일사량 (MJ/m^2 단위를 1시간 평균 W/m^2로 환산: 1 MJ/m^2 = 277.78 W/m^2)
-                raw_solar_mj = float(tokens[15]) if len(tokens) > 15 and tokens[15] != "-99.0" else 2.7
-                solar_w = round(raw_solar_mj * 277.78, 1) if raw_solar_mj > 0 else 700.0
+                # 기상청 ASOS 전문: tokens[11] = 기온, tokens[14] or [15] = 일사량
+                temp = 31.0
+                if len(tokens) > 11 and tokens[11] not in ["-99.0", "-99"]:
+                    temp = float(tokens[11])
+
+                solar_w = 700.0
+                # 일사량 컬럼 탐색 (기상청 일사량 결측치 대응)
+                if len(tokens) > 15 and tokens[15] not in ["-99.0", "-99"]:
+                    raw_solar_mj = float(tokens[15])
+                    solar_w = round(raw_solar_mj * 277.78, 1) if raw_solar_mj > 0 else 700.0
+                elif len(tokens) > 14 and tokens[14] not in ["-99.0", "-99"]:
+                    raw_solar_mj = float(tokens[14])
+                    solar_w = round(raw_solar_mj * 277.78, 1) if raw_solar_mj > 0 else 700.0
 
                 return {
                     "temp_c": temp,
@@ -71,13 +88,24 @@ def fetch_kma_weather_data(
                     "station_id": station_id,
                     "updated_at": datetime.now().strftime("%H:%M:%S"),
                 }
+    except requests.exceptions.Timeout:
+        return {
+            **FALLBACK_WEATHER,
+            "status": "API_TIMEOUT_MOCK",
+            "msg": "기상청 서버 응답 지연 (6초 초과)",
+            "updated_at": datetime.now().strftime("%H:%M:%S"),
+        }
     except Exception as e:
-        pass
+        return {
+            **FALLBACK_WEATHER,
+            "status": "API_PARSE_ERROR",
+            "error_detail": str(e),
+            "updated_at": datetime.now().strftime("%H:%M:%S"),
+        }
 
-    # 통신 실패 시 백업 모드로 전환
     return {
         **FALLBACK_WEATHER,
-        "status": "API_TIMEOUT_MOCK",
+        "status": "API_EMPTY_RESPONSE",
         "updated_at": datetime.now().strftime("%H:%M:%S"),
     }
 
