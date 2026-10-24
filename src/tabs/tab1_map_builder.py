@@ -4,6 +4,7 @@
 - 좌측 컨트롤 패널(3.2): 핀 관리, 도로 일괄 생성(구간명 지정), 간선 수정, 수동 연결, 삭제, 2차시 탐구 CSV 내보내기
 - 우측 풀사이즈 캔버스(6.8): 네이버 지도 뷰포트, 실시간 핀 및 노면 색상 오버레이
 - 15m 간격 자동 보간(Interpolation) 및 지오펜싱 노면 자동 판별
+- 상단 탭 헤더 가림 방지 최적화 CSS 적용 (Streamlit 1.66+ 호환)
 """
 
 import math
@@ -73,16 +74,21 @@ def interpolate_points_by_distance(
 def render_tab1_map_builder(class_code: str, team_id: str) -> None:
     """1단계 맵 빌더 화면 (좌우 분할 스플릿 HUD 레이아웃 & 2차시 CSV 내보내기)."""
 
-    # 1. 전폭 레이아웃 CSS 인젝션
+    # 1. 전폭 레이아웃 및 상단 탭 헤더 가림 방지 패치 CSS 인젝션
     st.markdown(
         """
         <style>
         .block-container {
-            padding-top: 1.2rem !important;
-            padding-bottom: 0rem !important;
+            padding-top: 4.2rem !important;
+            padding-bottom: 1.0rem !important;
             padding-left: 1.5rem !important;
             padding-right: 1.5rem !important;
             max-width: 100% !important;
+        }
+        div[data-baseweb="tab-list"] {
+            margin-bottom: 1.2rem !important;
+            position: relative !important;
+            z-index: 10 !important;
         }
         iframe {
             border-radius: 8px;
