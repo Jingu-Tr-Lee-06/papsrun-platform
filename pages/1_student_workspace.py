@@ -10,11 +10,13 @@
 import streamlit as st
 
 from src.db.class_session_manager import get_class_session_config
+from src.geo.weather_engine import get_effective_weather_data
 from src.tabs.tab1_map_builder import render_tab1_map_builder
 from src.tabs.tab2_topology_checker import render_tab2_topology_checker
 from src.tabs.tab3_vibe_optimizer import render_tab3_vibe_optimizer
 from src.tabs.tab4_vscode_workspace import render_tab4_vscode_workspace
 from src.tabs.tab5_edge_runner_artifact import render_tab5_edge_runner_artifact
+from src.utils.auth_helper import sync_auth_session
 
 # Streamlit 페이지 메타데이터 설정 (브라우저 탭 및 상단 UI)
 st.set_page_config(
@@ -24,7 +26,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-from src.utils.auth_helper import sync_auth_session
 sync_auth_session()
 
 
@@ -48,16 +49,30 @@ def render_student_workspace_page() -> None:
     ).strip()
     st.session_state["current_team_id"] = team_id
 
-    # 학급 세션 환경 조회
+    # 학급 세션 환경 조회 (잠금 여부 확인)
     session_cfg = get_class_session_config(class_code)
     is_locked = session_cfg.get("is_locked", False)
-    air_temp = session_cfg.get("air_temp_c", 30.0)
-    solar_rad = session_cfg.get("solar_rad", 750.0)
+
+    # 💡 실시간 기상 데이터 엔진 연동 (공주 캠퍼스 좌표 기준 최인접 관측소 매핑 및 교사 Override 자동 수신)
+    current_weather = get_effective_weather_data(lat=36.4678, lng=127.1325)
+    air_temp = current_weather.get("temp_c", 20.0)
+    solar_rad = current_weather.get("solar_w_m2", 0.0)
+    stn_name = current_weather.get("station_name", "인접 관측소")
+    weather_status = current_weather.get("status", "UNKNOWN")
 
     st.sidebar.divider()
-    st.sidebar.markdown("##### 🌤️ 학급 환경 파라미터")
+    st.sidebar.markdown("##### 🌤️ 캠퍼스 실시간 기상 환경")
+    st.sidebar.write(f"• **관측 거점:** `{stn_name}`")
     st.sidebar.write(f"• **대기 기온:** `{air_temp:.1f} °C`")
     st.sidebar.write(f"• **태양 일사량:** `{solar_rad:.1f} W/m²`")
+
+    if weather_status == "TEACHER_OVERRIDE":
+        st.sidebar.info("🔵 교사 가상 환경 주입 중")
+    elif weather_status == "LIVE_KMA_API":
+        st.sidebar.success("🟢 기상청 실시간 관측 연동")
+    else:
+        st.sidebar.warning(f"🟡 {weather_status}")
+
     if is_locked:
         st.sidebar.warning("🔒 교사 작도 잠금 활성화")
     else:

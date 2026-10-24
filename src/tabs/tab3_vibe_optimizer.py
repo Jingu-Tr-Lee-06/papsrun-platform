@@ -1,156 +1,86 @@
-"""[3단계 UI] 바이브 코딩 경로 최적화 및 3방향 다익스트라 탐색 컨트롤러 모듈.
+"""PAPSrun 3단계: AI 바이브 코딩 스튜디오 (실시간 타이핑 스트리밍 지원).
 
-Gemini 바이브 코딩 패널(vibe_chat_panel)과 연계하여 실시간 AST 검증을 거친
-가중치 함수를 NetworkX 그래프에 주입하고, 최단거리 경로, 쾌적 경로(그늘/경사 완화),
-바이브 코딩 경로를 동시 탐색하여 시각적·정량적으로 비교 분석합니다.
+st.write_stream()을 활용해 Ollama Qwen SLM의 토큰 생성 속도에 맞춰
+제미나이처럼 글자가 한 글자씩 실시간으로 작성되는 롸이팅 효과를 연출합니다.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional
 import streamlit as st
-from streamlit_folium import st_folium
 
-from src.ai.sandbox_runner import execute_weight_function_sandbox
-from src.components.map_canvas import (
-    create_interactive_campus_map,
-    render_dynamic_path_layer,
-    render_graph_overlay,
+from src.ai.gemini_client import (
+    ROLE_CATALOG,
+    detect_role_from_prompt,
+    read_master_code,
+    stream_gemini_vibe_code,
 )
-from src.components.metrics_card import (
-    render_comparative_metrics_card,
-    render_paps_fitness_card,
-    render_surface_breakdown_widget,
-)
-from src.components.vibe_chat_panel import render_vibe_chat_sidebar
-from src.db.class_session_manager import get_class_session_config
-from src.db.road_repository import get_all_edges
-from src.graph.dijkstra_engine import (
-    find_comfort_path,
-    find_custom_weight_path,
-    find_shortest_path,
-)
-from src.graph.graph_builder import build_campus_multidigraph
-from src.graph.path_evaluator import evaluate_running_path
 
 
-def render_tab3_vibe_optimizer(class_code: str, team_id: str) -> None:
-    """3단계 바이브 코딩 및 다익스트라 경로 최적화 화면을 렌더링합니다.
-
-    Args:
-        class_code: 현재 접속한 학급 코드
-        team_id: 현재 로그인한 모둠 식별자
-    """
-    st.markdown("### ⚡ 3단계: AI 바이브 코딩 & 다익스트라 경로 최적화")
-    st.caption(
-        "자연어 프롬프트로 다익스트라 가중치 함수(Weight Function)를 설계하고, "
-        "일반 최단거리 경로와 체력 맞춤형 최적 경로를 다각도로 비교해 봅니다."
+def get_teacher_greeting() -> str:
+    """선생님다운 어조의 초기 환영 안내 멘트."""
+    return (
+        "👨‍🏫 **반가워요! PAPSrun 코딩 수업을 함께할 AI 튜터 선생님이에요.**\n\n"
+        "우리 지난 차시까지 모은 환경 데이터와 체육 실측 데이터를 바탕으로 멋진 러닝 경로 서비스를 완성해 볼 텐데요,\n"
+        "**오늘 우리 학생은 20개 역할 중 어떤 파트를 맡아 구현해보고 싶나요?**\n\n"
+        "편하게 평소 대화하듯 말씀해 주세요:\n"
+        "• *'선생님, 저 2번 그늘 차광률 계산 맡았어요!'*\n"
+        "• *'오르막길 경사도(%) 계산하는 함수 구현하고 싶어요'*\n"
+        "• *'심박수 예측하는 머신러닝 추론 함수 만들래요'*\n\n"
+        "💡 말씀해 주시면 담당 파일(`student_XX.py`)과 기초 코드를 즉시 연결해 드릴게요!"
     )
 
-    edges = get_all_edges(class_code)
-    if not edges:
-        st.warning("⚠️ 도로 데이터가 없습니다. 1단계에서 먼저 도로망을 구성해 주세요.")
-        return
 
-    # 그래프 빌드
-    G, nodes_dict = build_campus_multidigraph(edges)
-    available_nodes = sorted(list(G.nodes))
-    if len(available_nodes) < 2:
-        st.error("최소 2개 이상의 노드가 필요합니다.")
-        return
+def render_tab3_vibe_optimizer(class_code: str, student_identifier: str = "student_01") -> None:
+    """3단계: AI 바이브 코딩 스튜디오 (실시간 타이핑 롸이팅 전용 뷰)."""
+    st.markdown("### ⚡ 3단계: AI 바이브 코딩 스튜디오")
+    st.caption("선생님 AI와 대화하며 나만의 모듈 코드를 완성하고, 코드를 복사하여 내 파일에 적용해 보세요.")
 
-    # 학급 환경 변수 로드
-    session_cfg = get_class_session_config(class_code)
-    weather_info = {
-        "air_temp_c": session_cfg.get("air_temp_c", 30.0),
-        "solar_rad": session_cfg.get("solar_rad", 750.0),
-    }
+    # 세션 상태 초기화
+    if "vibe_messages" not in st.session_state:
+        st.session_state["vibe_messages"] = [
+            {"role": "assistant", "content": get_teacher_greeting()}
+        ]
 
-    # 레이아웃: 좌측(지도 및 경로 비교) / 우측(바이브 코딩 대화창 및 에디터)
-    col_main, col_chat = st.columns([3, 2])
-
-    with col_main:
-        st.markdown("##### 🏁 경로 탐색 출발점 및 도착점 지정")
-        n_col1, n_col2 = st.columns(2)
-        with n_col1:
-            start_node = st.selectbox("출발 노드 (Start Node)", options=available_nodes, index=0)
-        with n_col2:
-            default_end_idx = len(available_nodes) - 1 if len(available_nodes) > 1 else 0
-            end_node = st.selectbox("도착 노드 (End Node)", options=available_nodes, index=default_end_idx)
-
-        if start_node == end_node:
-            st.warning("출발 노드와 도착 노드를 서로 다르게 설정해 주세요.")
-
-    with col_chat:
-        # 우측 바이브 코딩 패널
-        code_str, apply_clicked = render_vibe_chat_sidebar(
-            student_profile={"team_id": team_id, "paps_grade": "2등급 (심폐지구력 집중)"},
-            weather_info=weather_info,
+    # 현재 배정된 역할 배지 안내
+    assigned_role = st.session_state.get("assigned_student_role")
+    if assigned_role and assigned_role in ROLE_CATALOG:
+        info = ROLE_CATALOG[assigned_role]
+        st.success(
+            f"🎯 **현재 연결된 담당 모듈**: `[{assigned_role}] {info['title']}` "
+            f"(파일: `final_code/{info['team']}/{info['file']}`)"
         )
-
-    # 경로 탐색 연산 처리
-    if "latest_paths" not in st.session_state:
-        st.session_state["latest_paths"] = {}
-
-    if apply_clicked and start_node != end_node:
-        with st.spinner("다익스트라 알고리즘으로 경로를 다각도 탐색 중입니다..."):
-            # 1. 일반 최단거리 경로
-            s_path, s_cost = find_shortest_path(G, start_node, end_node)
-            s_eval = evaluate_running_path(G, s_path, weather_info) if s_path else None
-
-            # 2. 쾌적 경로 (그늘 가중치 반영)
-            c_path, c_cost = find_comfort_path(G, start_node, end_node)
-            c_eval = evaluate_running_path(G, c_path, weather_info) if c_path else None
-
-            # 3. 바이브 코딩 동적 가중치 경로
-            func_obj, compile_err = execute_weight_function_sandbox(code_str)
-            v_path, v_cost, v_eval = None, 0.0, None
-
-            if func_obj:
-                v_path, v_cost = find_custom_weight_path(G, start_node, end_node, func_obj)
-                v_eval = evaluate_running_path(G, v_path, weather_info) if v_path else None
-            else:
-                st.error(f"동적 가중치 함수 실행 실패: {compile_err}")
-
-            st.session_state["latest_paths"] = {
-                "shortest": {"nodes": s_path, "cost": s_cost, "eval": s_eval},
-                "comfort": {"nodes": c_path, "cost": c_cost, "eval": c_eval},
-                "vibe": {"nodes": v_path, "cost": v_cost, "eval": v_eval},
-            }
-
-    # 결과 지도 및 비교 뷰 렌더링
-    paths_data = st.session_state.get("latest_paths", {})
-    s_info = paths_data.get("shortest", {})
-    c_info = paths_data.get("comfort", {})
-    v_info = paths_data.get("vibe", {})
-
-    with col_main:
-        st.markdown("##### 🗺️ 경로 탐색 결과 맵")
-        base_map = create_interactive_campus_map(center_lat=36.4675, center_lon=127.1405, zoom_start=17)
-        render_graph_overlay(base_map, edges, nodes_dict)
-
-        # 경로 레이어 오버레이
-        if s_info.get("nodes"):
-            render_dynamic_path_layer(base_map, s_info["nodes"], nodes_dict, label="최단거리", color="#6C757D", is_dashed=True)
-        if c_info.get("nodes"):
-            render_dynamic_path_layer(base_map, c_info["nodes"], nodes_dict, label="쾌적 경로", color="#2A9D8F")
-        if v_info.get("nodes"):
-            render_dynamic_path_layer(base_map, v_info["nodes"], nodes_dict, label="바이브 코딩 최적 경로", color="#E63946")
-
-        st_folium(base_map, width="100%", height=500)
-
-    # 하단: 다채널 메트릭 비교 카드 출력
-    st.divider()
-    if s_info.get("eval") or c_info.get("eval") or v_info.get("eval"):
-        render_comparative_metrics_card(
-            shortest_metrics=s_info.get("eval"),
-            comfort_metrics=c_info.get("eval"),
-            vibe_metrics=v_info.get("eval"),
-        )
-
-        st.divider()
-        v_eval_data = v_info.get("eval")
-        if v_eval_data:
-            st.markdown("#### 🎯 내가 만든 바이브 코딩 경로 세부 분석")
-            render_paps_fitness_card(v_eval_data, path_name="바이브 코딩 맞춤 경로")
-            render_surface_breakdown_widget(v_eval_data.get("surface_distribution", {}))
     else:
-        st.info("우측 바이브 코딩 패널에서 조건을 입력하고 [가중치 함수 적용 및 경로 탐색 실행] 버튼을 눌러보세요.")
+        st.info("💡 **안내**: 아래 채팅창에 오늘 담당한 번호나 기능(예: '2번', '그늘 계산')을 말씀해 주시면 모듈이 연결됩니다.")
+
+    st.markdown("---")
+
+    # 💡 고정 높이 스크롤 컨테이너
+    chat_container = st.container(height=560)
+
+    # 기존 대화 이력 렌더링
+    with chat_container:
+        for msg in st.session_state["vibe_messages"]:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+
+    # 사용자 프롬프트 입력창
+    user_input = st.chat_input("선생님에게 맡은 역할이나 필요한 코드 로직을 자유롭게 말씀해 주세요...")
+
+    if user_input:
+        # 1. 사용자 메시지 즉시 렌더링 및 세션 저장
+        st.session_state["vibe_messages"].append({"role": "user", "content": user_input})
+        with chat_container:
+            with st.chat_message("user"):
+                st.markdown(user_input)
+
+            # 2. AI 튜터 스트리밍 응답 (제미나이 실시간 타이핑 롸이팅 효과)
+            with st.chat_message("assistant"):
+                token_stream = stream_gemini_vibe_code(
+                    team_id=assigned_role or student_identifier,
+                    user_prompt=user_input,
+                )
+                # st.write_stream이 제너레이터를 받아서 토큰 단위로 실시간 타자를 침
+                full_reply = st.write_stream(token_stream)
+
+        # 3. 완료된 전체 메시지 세션 저장
+        st.session_state["vibe_messages"].append({"role": "assistant", "content": full_reply})
+        st.rerun()

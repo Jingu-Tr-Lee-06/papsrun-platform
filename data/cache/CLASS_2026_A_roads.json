@@ -1,0 +1,756 @@
+[
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 45.56,
+    "surface_type": "urethane_track",
+    "is_shaded": false,
+    "v_coords": [
+      36.46834,
+      127.13845
+    ],
+    "albedo": 0.2,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46827_127.13877",
+    "updated_at": 1792785557.881403,
+    "edge_id": "N_36.46827_127.13877__N_36.46834_127.13845",
+    "elevation_end": 46.54,
+    "name": "운동장 트랙",
+    "absorbed_rad_w_m2": 3533.4,
+    "slope_pct": 3.3,
+    "length_m": 29.65,
+    "v": "N_36.46834_127.13845",
+    "u_coords": [
+      36.46827,
+      127.13877
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 46.54,
+    "surface_type": "urethane_track",
+    "is_shaded": false,
+    "v_coords": [
+      36.46841,
+      127.13813
+    ],
+    "albedo": 0.2,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46834_127.13845",
+    "updated_at": 1792785557.9942222,
+    "name": "운동장 트랙",
+    "elevation_end": 48.43,
+    "edge_id": "N_36.46834_127.13845__N_36.46841_127.13813",
+    "absorbed_rad_w_m2": 3533.4,
+    "slope_pct": 6.4,
+    "length_m": 29.65,
+    "v": "N_36.46841_127.13813",
+    "u_coords": [
+      36.46834,
+      127.13845
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 48.43,
+    "surface_type": "urethane_track",
+    "is_shaded": false,
+    "v_coords": [
+      36.46856,
+      127.13801
+    ],
+    "albedo": 0.2,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46841_127.13813",
+    "updated_at": 1792785558.1310697,
+    "name": "운동장 트랙",
+    "elevation_end": 50.44,
+    "edge_id": "N_36.46841_127.13813__N_36.46856_127.13801",
+    "absorbed_rad_w_m2": 3533.4,
+    "slope_pct": 10.1,
+    "length_m": 19.83,
+    "v": "N_36.46856_127.13801",
+    "u_coords": [
+      36.46841,
+      127.13813
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 50.44,
+    "surface_type": "urethane_track",
+    "is_shaded": false,
+    "v_coords": [
+      36.46877,
+      127.13797
+    ],
+    "albedo": 0.2,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46856_127.13801",
+    "updated_at": 1792785558.5399177,
+    "name": "운동장 트랙",
+    "elevation_end": 52.79,
+    "edge_id": "N_36.46856_127.13801__N_36.46877_127.13797",
+    "absorbed_rad_w_m2": 3533.4,
+    "slope_pct": 9.9,
+    "length_m": 23.62,
+    "v": "N_36.46877_127.13797",
+    "u_coords": [
+      36.46856,
+      127.13801
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 52.79,
+    "surface_type": "urethane_track",
+    "is_shaded": false,
+    "v_coords": [
+      36.46893,
+      127.13805
+    ],
+    "albedo": 0.2,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46877_127.13797",
+    "updated_at": 1792785558.9007537,
+    "name": "운동장 트랙",
+    "elevation_end": 54.06,
+    "edge_id": "N_36.46877_127.13797__N_36.46893_127.13805",
+    "absorbed_rad_w_m2": 3533.4,
+    "slope_pct": 6.6,
+    "length_m": 19.18,
+    "v": "N_36.46893_127.13805",
+    "u_coords": [
+      36.46877,
+      127.13797
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 54.06,
+    "surface_type": "urethane_track",
+    "is_shaded": false,
+    "v_coords": [
+      36.46904,
+      127.13824
+    ],
+    "albedo": 0.2,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46893_127.13805",
+    "updated_at": 1792785559.4363406,
+    "name": "운동장 트랙",
+    "elevation_end": 54.48,
+    "edge_id": "N_36.46893_127.13805__N_36.46904_127.13824",
+    "absorbed_rad_w_m2": 3533.4,
+    "slope_pct": 2.0,
+    "length_m": 20.93,
+    "v": "N_36.46904_127.13824",
+    "u_coords": [
+      36.46893,
+      127.13805
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 54.48,
+    "surface_type": "urethane_track",
+    "is_shaded": false,
+    "v_coords": [
+      36.46908,
+      127.13841
+    ],
+    "albedo": 0.2,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46904_127.13824",
+    "updated_at": 1792785560.2007449,
+    "name": "운동장 트랙",
+    "elevation_end": 54.51,
+    "edge_id": "N_36.46904_127.13824__N_36.46908_127.13841",
+    "absorbed_rad_w_m2": 3533.4,
+    "slope_pct": 0.2,
+    "length_m": 15.84,
+    "v": "N_36.46908_127.13841",
+    "u_coords": [
+      36.46904,
+      127.13824
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 54.51,
+    "surface_type": "urethane_track",
+    "is_shaded": false,
+    "v_coords": [
+      36.46902,
+      127.13871
+    ],
+    "albedo": 0.2,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46908_127.13841",
+    "updated_at": 1792785560.484948,
+    "name": "운동장 트랙",
+    "elevation_end": 53.64,
+    "edge_id": "N_36.46908_127.13841__N_36.46902_127.13871",
+    "absorbed_rad_w_m2": 3533.4,
+    "slope_pct": -3.1,
+    "length_m": 27.64,
+    "v": "N_36.46902_127.13871",
+    "u_coords": [
+      36.46908,
+      127.13841
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 53.64,
+    "surface_type": "urethane_track",
+    "is_shaded": false,
+    "v_coords": [
+      36.46895,
+      127.13901
+    ],
+    "albedo": 0.2,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46902_127.13871",
+    "updated_at": 1792785559.8713596,
+    "name": "운동장 트랙",
+    "elevation_end": 52.98,
+    "edge_id": "N_36.46902_127.13871__N_36.46895_127.13901",
+    "absorbed_rad_w_m2": 3533.4,
+    "slope_pct": -2.4,
+    "length_m": 27.93,
+    "v": "N_36.46895_127.13901",
+    "u_coords": [
+      36.46902,
+      127.13871
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 52.98,
+    "surface_type": "urethane_track",
+    "is_shaded": false,
+    "v_coords": [
+      36.46889,
+      127.13931
+    ],
+    "albedo": 0.2,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46895_127.13901",
+    "updated_at": 1792785559.653241,
+    "name": "운동장 트랙",
+    "elevation_end": 52.26,
+    "edge_id": "N_36.46895_127.13901__N_36.46889_127.13931",
+    "absorbed_rad_w_m2": 3533.4,
+    "slope_pct": -2.6,
+    "length_m": 27.64,
+    "v": "N_36.46889_127.13931",
+    "u_coords": [
+      36.46895,
+      127.13901
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 52.26,
+    "surface_type": "urethane_track",
+    "is_shaded": false,
+    "v_coords": [
+      36.4688,
+      127.1396
+    ],
+    "albedo": 0.2,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46889_127.13931",
+    "updated_at": 1792785559.307731,
+    "name": "운동장 트랙",
+    "elevation_end": 50.6,
+    "edge_id": "N_36.46889_127.13931__N_36.46880_127.13960",
+    "absorbed_rad_w_m2": 3533.4,
+    "slope_pct": -6.0,
+    "length_m": 27.8,
+    "v": "N_36.46880_127.13960",
+    "u_coords": [
+      36.46889,
+      127.13931
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 50.6,
+    "surface_type": "urethane_track",
+    "is_shaded": false,
+    "v_coords": [
+      36.46864,
+      127.1397
+    ],
+    "albedo": 0.2,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46880_127.13960",
+    "updated_at": 1792785559.204163,
+    "name": "운동장 트랙",
+    "elevation_end": 48.39,
+    "edge_id": "N_36.46880_127.13960__N_36.46864_127.13970",
+    "absorbed_rad_w_m2": 3533.4,
+    "slope_pct": -11.1,
+    "length_m": 19.91,
+    "v": "N_36.46864_127.13970",
+    "u_coords": [
+      36.4688,
+      127.1396
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 48.39,
+    "surface_type": "urethane_track",
+    "is_shaded": false,
+    "v_coords": [
+      36.46844,
+      127.13972
+    ],
+    "albedo": 0.2,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46864_127.13970",
+    "updated_at": 1792785558.6428697,
+    "name": "운동장 트랙",
+    "elevation_end": 46.16,
+    "edge_id": "N_36.46864_127.13970__N_36.46844_127.13972",
+    "absorbed_rad_w_m2": 3533.4,
+    "slope_pct": -10.0,
+    "length_m": 22.31,
+    "v": "N_36.46844_127.13972",
+    "u_coords": [
+      36.46864,
+      127.1397
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 46.16,
+    "surface_type": "urethane_track",
+    "is_shaded": false,
+    "v_coords": [
+      36.46823,
+      127.13961
+    ],
+    "albedo": 0.2,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46844_127.13972",
+    "updated_at": 1792785558.2450664,
+    "name": "운동장 트랙",
+    "elevation_end": 44.63,
+    "edge_id": "N_36.46844_127.13972__N_36.46823_127.13961",
+    "absorbed_rad_w_m2": 3533.4,
+    "slope_pct": -6.0,
+    "length_m": 25.34,
+    "v": "N_36.46823_127.13961",
+    "u_coords": [
+      36.46844,
+      127.13972
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 44.63,
+    "surface_type": "urethane_track",
+    "is_shaded": false,
+    "v_coords": [
+      36.46814,
+      127.13936
+    ],
+    "albedo": 0.2,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46823_127.13961",
+    "updated_at": 1792785557.7345052,
+    "edge_id": "N_36.46823_127.13961__N_36.46814_127.13936",
+    "elevation_end": 44.48,
+    "name": "운동장 트랙",
+    "absorbed_rad_w_m2": 3533.4,
+    "slope_pct": -0.6,
+    "length_m": 24.49,
+    "v": "N_36.46814_127.13936",
+    "u_coords": [
+      36.46823,
+      127.13961
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 44.48,
+    "surface_type": "urethane_track",
+    "is_shaded": false,
+    "v_coords": [
+      36.4682,
+      127.13908
+    ],
+    "albedo": 0.2,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46814_127.13936",
+    "updated_at": 1792785557.4792585,
+    "edge_id": "N_36.46814_127.13936__N_36.46820_127.13908",
+    "elevation_end": 45.03,
+    "name": "운동장 트랙",
+    "absorbed_rad_w_m2": 3533.4,
+    "slope_pct": 2.1,
+    "length_m": 25.91,
+    "v": "N_36.46820_127.13908",
+    "u_coords": [
+      36.46814,
+      127.13936
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 45.03,
+    "surface_type": "urethane_track",
+    "is_shaded": false,
+    "v_coords": [
+      36.46827,
+      127.13877
+    ],
+    "albedo": 0.2,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46820_127.13908",
+    "updated_at": 1792785557.5930758,
+    "edge_id": "N_36.46820_127.13908__N_36.46827_127.13877",
+    "elevation_end": 45.56,
+    "name": "운동장 트랙",
+    "absorbed_rad_w_m2": 3533.4,
+    "slope_pct": 1.8,
+    "length_m": 28.79,
+    "v": "N_36.46827_127.13877",
+    "u_coords": [
+      36.4682,
+      127.13908
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 46.83,
+    "surface_type": "concrete_walkway",
+    "is_shaded": false,
+    "v_coords": [
+      36.46909,
+      127.14075
+    ],
+    "albedo": 0.3,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46908_127.14047",
+    "updated_at": 1792785560.6670897,
+    "name": "메인도록 오르막 내리막 (#2)",
+    "elevation_end": 44.23,
+    "edge_id": "N_36.46908_127.14047__N_36.46909_127.14075",
+    "absorbed_rad_w_m2": 3091.7,
+    "slope_pct": -10.4,
+    "length_m": 25.06,
+    "v": "N_36.46909_127.14075",
+    "u_coords": [
+      36.46908,
+      127.14047
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 44.23,
+    "surface_type": "concrete_walkway",
+    "is_shaded": false,
+    "v_coords": [
+      36.46909,
+      127.14101
+    ],
+    "albedo": 0.3,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46909_127.14075",
+    "updated_at": 1792785560.7752664,
+    "name": "메인도록 오르막 내리막 (#4)",
+    "elevation_end": 42.15,
+    "edge_id": "N_36.46909_127.14075__N_36.46909_127.14101",
+    "absorbed_rad_w_m2": 3091.7,
+    "slope_pct": -8.9,
+    "length_m": 23.25,
+    "v": "N_36.46909_127.14101",
+    "u_coords": [
+      36.46909,
+      127.14075
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 42.15,
+    "surface_type": "concrete_walkway",
+    "is_shaded": false,
+    "v_coords": [
+      36.46907,
+      127.14123
+    ],
+    "albedo": 0.3,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46909_127.14101",
+    "updated_at": 1792785560.8218043,
+    "name": "메인도록 오르막 내리막 (#6)",
+    "elevation_end": 40.69,
+    "edge_id": "N_36.46909_127.14101__N_36.46907_127.14123",
+    "absorbed_rad_w_m2": 3091.7,
+    "slope_pct": -7.4,
+    "length_m": 19.8,
+    "v": "N_36.46907_127.14123",
+    "u_coords": [
+      36.46909,
+      127.14101
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 40.69,
+    "surface_type": "concrete_walkway",
+    "is_shaded": false,
+    "v_coords": [
+      36.46904,
+      127.14148
+    ],
+    "albedo": 0.3,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46907_127.14123",
+    "updated_at": 1792785560.4204922,
+    "name": "메인도록 오르막 내리막 (#8)",
+    "elevation_end": 39.46,
+    "edge_id": "N_36.46907_127.14123__N_36.46904_127.14148",
+    "absorbed_rad_w_m2": 3091.7,
+    "slope_pct": -5.4,
+    "length_m": 22.6,
+    "v": "N_36.46904_127.14148",
+    "u_coords": [
+      36.46907,
+      127.14123
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 39.46,
+    "surface_type": "concrete_walkway",
+    "is_shaded": false,
+    "v_coords": [
+      36.46902,
+      127.14174
+    ],
+    "albedo": 0.3,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46904_127.14148",
+    "updated_at": 1792785560.3056302,
+    "name": "메인도록 오르막 내리막 (#10)",
+    "elevation_end": 38.67,
+    "edge_id": "N_36.46904_127.14148__N_36.46902_127.14174",
+    "absorbed_rad_w_m2": 3091.7,
+    "slope_pct": -3.4,
+    "length_m": 23.36,
+    "v": "N_36.46902_127.14174",
+    "u_coords": [
+      36.46904,
+      127.14148
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 38.67,
+    "surface_type": "concrete_walkway",
+    "is_shaded": false,
+    "v_coords": [
+      36.46902,
+      127.14199
+    ],
+    "albedo": 0.3,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46902_127.14174",
+    "updated_at": 1792785560.0319872,
+    "name": "메인도록 오르막 내리막 (#12)",
+    "elevation_end": 38.23,
+    "edge_id": "N_36.46902_127.14174__N_36.46902_127.14199",
+    "absorbed_rad_w_m2": 3091.7,
+    "slope_pct": -2.0,
+    "length_m": 22.36,
+    "v": "N_36.46902_127.14199",
+    "u_coords": [
+      36.46902,
+      127.14174
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 38.23,
+    "surface_type": "lawn_grass",
+    "is_shaded": false,
+    "v_coords": [
+      36.46898,
+      127.14229
+    ],
+    "albedo": 0.22,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46902_127.14199",
+    "updated_at": 1792785560.0802486,
+    "name": "메인도록 오르막 내리막 (#14)",
+    "elevation_end": 37.14,
+    "edge_id": "N_36.46902_127.14199__N_36.46898_127.14229",
+    "absorbed_rad_w_m2": 3445.0,
+    "slope_pct": -4.0,
+    "length_m": 27.19,
+    "v": "N_36.46898_127.14229",
+    "u_coords": [
+      36.46902,
+      127.14199
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 37.14,
+    "surface_type": "lawn_grass",
+    "is_shaded": false,
+    "v_coords": [
+      36.46894,
+      127.14259
+    ],
+    "albedo": 0.22,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46898_127.14229",
+    "updated_at": 1792785559.7677064,
+    "name": "메인도록 오르막 내리막 (#16)",
+    "elevation_end": 35.49,
+    "edge_id": "N_36.46898_127.14229__N_36.46894_127.14259",
+    "absorbed_rad_w_m2": 3445.0,
+    "slope_pct": -6.1,
+    "length_m": 27.19,
+    "v": "N_36.46894_127.14259",
+    "u_coords": [
+      36.46898,
+      127.14229
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 35.49,
+    "surface_type": "lawn_grass",
+    "is_shaded": false,
+    "v_coords": [
+      36.46879,
+      127.14286
+    ],
+    "albedo": 0.22,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46894_127.14259",
+    "updated_at": 1792785559.544707,
+    "name": "메인도록 오르막 내리막 (#18)",
+    "elevation_end": 32.2,
+    "edge_id": "N_36.46894_127.14259__N_36.46879_127.14286",
+    "absorbed_rad_w_m2": 3445.0,
+    "slope_pct": -11.2,
+    "length_m": 29.34,
+    "v": "N_36.46879_127.14286",
+    "u_coords": [
+      36.46894,
+      127.14259
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 32.2,
+    "surface_type": "lawn_grass",
+    "is_shaded": false,
+    "v_coords": [
+      36.46865,
+      127.14303
+    ],
+    "albedo": 0.22,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46879_127.14286",
+    "updated_at": 1792785559.0605156,
+    "name": "메인도록 오르막 내리막 (#20)",
+    "elevation_end": 29.42,
+    "edge_id": "N_36.46879_127.14286__N_36.46865_127.14303",
+    "absorbed_rad_w_m2": 3445.0,
+    "slope_pct": -12.8,
+    "length_m": 21.76,
+    "v": "N_36.46865_127.14303",
+    "u_coords": [
+      36.46879,
+      127.14286
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 29.42,
+    "surface_type": "concrete_walkway",
+    "is_shaded": false,
+    "v_coords": [
+      36.4685,
+      127.14321
+    ],
+    "albedo": 0.3,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46865_127.14303",
+    "updated_at": 1792785558.7683973,
+    "name": "메인도록 오르막 내리막 (#22)",
+    "elevation_end": 26.45,
+    "edge_id": "N_36.46865_127.14303__N_36.46850_127.14321",
+    "absorbed_rad_w_m2": 3091.7,
+    "slope_pct": -12.8,
+    "length_m": 23.18,
+    "v": "N_36.46850_127.14321",
+    "u_coords": [
+      36.46865,
+      127.14303
+    ],
+    "ambient_temp_c": 15.2
+  },
+  {
+    "team_id": "TEAM_01",
+    "elevation_start": 26.45,
+    "surface_type": "concrete_walkway",
+    "is_shaded": false,
+    "v_coords": [
+      36.46833,
+      127.1434
+    ],
+    "albedo": 0.3,
+    "effective_solar_w_m2": 4416.7,
+    "u": "N_36.46850_127.14321",
+    "updated_at": 1792785558.4185522,
+    "name": "메인도록 오르막 내리막 (#24)",
+    "elevation_end": 23.43,
+    "edge_id": "N_36.46850_127.14321__N_36.46833_127.14340",
+    "absorbed_rad_w_m2": 3091.7,
+    "slope_pct": -11.9,
+    "length_m": 25.42,
+    "v": "N_36.46833_127.14340",
+    "u_coords": [
+      36.4685,
+      127.14321
+    ],
+    "ambient_temp_c": 15.2
+  }
+]

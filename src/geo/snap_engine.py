@@ -15,21 +15,21 @@ EARTH_RADIUS_METERS: float = 6371000.0
 DEFAULT_SNAP_THRESHOLD_METERS: float = 15.0
 
 
-def calculate_haversine_distance(
-    coord1: Tuple[float, float],
-    coord2: Tuple[float, float],
-) -> float:
+def calculate_haversine_distance(*args) -> float:
     """하버사인 공식을 사용하여 두 위경도 좌표 간의 구면 거리(m)를 계산합니다.
 
-    Args:
-        coord1: (위도1, 경도1)
-        coord2: (위도2, 경도2)
-
-    Returns:
-        두 지점 사이의 지표면 거리 (미터 단위, float)
+    지원 형태:
+      1) calculate_haversine_distance((lat1, lon1), (lat2, lon2))
+      2) calculate_haversine_distance(lat1, lon1, lat2, lon2)
     """
-    lat1, lon1 = coord1
-    lat2, lon2 = coord2
+    if len(args) == 2:
+        coord1, coord2 = args
+        lat1, lon1 = coord1
+        lat2, lon2 = coord2
+    elif len(args) == 4:
+        lat1, lon1, lat2, lon2 = args
+    else:
+        raise TypeError(f"calculate_haversine_distance expects 2 or 4 arguments, got {len(args)}")
 
     phi1 = math.radians(lat1)
     phi2 = math.radians(lat2)
