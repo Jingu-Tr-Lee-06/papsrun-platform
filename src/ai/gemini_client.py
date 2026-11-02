@@ -100,11 +100,13 @@ for idx in range(6, 21):
 
 
 def check_hidden_master_command(user_text: str) -> Optional[str]:
+    """교사용 오버라이드 커맨드 감지 ($$answer-student_X)."""
     match = re.search(r"\$\$answer-student_?([1-9]|1[0-9]|20)\b", user_text.strip().lower())
     return f"student_{int(match.group(1)):02d}" if match else None
 
 
 def detect_role_from_prompt(user_text: str) -> Optional[str]:
+    """학생 프롬프트에서 담당 파트 식별."""
     text_lower = user_text.lower()
     num_match = re.search(r"\b([1-9]|1[0-9]|20)\s*(?:번|학생|호)?\b", text_lower)
     if num_match:
@@ -115,20 +117,28 @@ def detect_role_from_prompt(user_text: str) -> Optional[str]:
 
 
 def read_master_code(st_id: str) -> str:
+    """final_code 폴더에서 학생별 완성 코드를 읽어오며, 다중 경로를 탐색합니다."""
     info = ROLE_CATALOG.get(st_id, ROLE_CATALOG["student_01"])
-    fpath = os.path.join(FINAL_CODE_DIR, info["team"], info["file"])
-    if os.path.exists(fpath):
-        try:
-            with open(fpath, "r", encoding="utf-8") as f:
-                c = f.read().strip()
-                if c:
-                    return c
-        except Exception:
-            pass
-    return f'# {info["file"]}\ndef {info["file"].replace(".py", "")}():\n    pass'
+    candidate_paths = [
+        os.path.join(os.getcwd(), "final_code", info["team"], info["file"]),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "final_code", info["team"], info["file"]),
+    ]
+
+    for fpath in candidate_paths:
+        if os.path.exists(fpath):
+            try:
+                with open(fpath, "r", encoding="utf-8") as f:
+                    content = f.read().strip()
+                    if content:
+                        return content
+            except Exception:
+                pass
+
+    return f"# [주의] final_code/{info['team']}/{info['file']} 파일이 존재하지 않습니다.\ndef {info['file'].replace('.py', '')}():\n    pass"
 
 
 def evaluate_prompt_quality(st_id: str, prompt: str) -> Tuple[bool, list, list]:
+    """프롬프트의 구체성과 필수 키워드 반영 여부를 판정합니다."""
     info = ROLE_CATALOG.get(st_id, ROLE_CATALOG["student_01"])
     p_lower = prompt.strip().lower()
     matched = [item for item in info["prompt_checklist"] if item.lower() in p_lower]
@@ -138,13 +148,39 @@ def evaluate_prompt_quality(st_id: str, prompt: str) -> Tuple[bool, list, list]:
     return is_quality, matched, missing
 
 
+@st.cache_data(ttl=10)
+def check_ollama_status(target_model: str = "qwen2.5-coder:3b") -> dict:
+    """Ollama 서버 헬스체크 및 특정 모델 적재 여부를 확인합니다."""
+    base_url = st.secrets.get("OLLAMA_BASE_URL", "http://100.102.25.109:11434")
+    try:
+        res = requests.get(f"{base_url.rstrip('/')}/api/tags", timeout=1.5)
+        if res.status_code != 200:
+            return {"online": False, "msg": f"서버 응답 오류({res.status_code})", "model_loaded": False}
+        
+        data = res.json()
+        models = [m.get("name", "") for m in data.get("models", [])]
+        is_model_present = any(target_model in m for m in models)
+        
+        return {
+            "online": True,
+            "msg": f"Ollama 연결됨 ({target_model})" if is_model_present else "Ollama 구동 중 (모델 미발견)",
+            "model_loaded": is_model_present,
+            "models": models
+        }
+    except requests.exceptions.Timeout:
+        return {"online": False, "msg": "응답 시간 초과", "model_loaded": False}
+    except requests.exceptions.ConnectionError:
+        return {"online": False, "msg": "서버 오프라인", "model_loaded": False}
+    except Exception as e:
+        return {"online": False, "msg": f"연결 실패: {str(e)}", "model_loaded": False}
+
+
 def stream_local_ollama_qwen(
     prompt: str,
     system_prompt: str,
     model_name: str = "qwen2.5-coder:3b",
 ) -> Generator[str, None, None]:
     """Ubuntu 랩 서버(Tailscale IP: 100.102.25.109) Ollama Qwen2.5-Coder:3B 스트리밍 클라이언트."""
-    # Secrets에 설정된 URL이 있으면 우선 사용하고, 없으면 Tailscale 사설 IP를 기본값으로 사용
     base_url = st.secrets.get("OLLAMA_BASE_URL", "http://100.102.25.109:11434")
     url = f"{base_url.rstrip('/')}/api/generate"
 
@@ -176,6 +212,7 @@ def stream_local_ollama_qwen(
 
 
 def stream_gemini_vibe_code(team_id: str, user_prompt: str) -> Generator[str, None, None]:
+    """학생의 입력에 따라 3단계 스캐폴딩 피드백 및 정답 코드를 단계적으로 제공합니다."""
     prompt_clean = user_prompt.strip()
 
     # 시도 횟수(retry_count) 세션 초기화
