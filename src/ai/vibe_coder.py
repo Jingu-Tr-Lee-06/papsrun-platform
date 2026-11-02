@@ -12,7 +12,7 @@ import requests
 import streamlit as st
 
 
-def _call_ollama_generate(system_prompt: str, user_content: str, model_name: str = "qwen2.5-coder:3b") -> str:
+def _call_ollama_generate(system_prompt: str, user_content: str, model_name: str = "qwen2.5-coder:3b-4k") -> str:
     """Ubuntu 랩 서버 Ollama REST API를 호출하여 전체 텍스트 응답을 수신합니다."""
     base_url = st.secrets.get("OLLAMA_BASE_URL", "http://100.102.25.109:11434")
     url = f"{base_url.rstrip('/')}/api/generate"

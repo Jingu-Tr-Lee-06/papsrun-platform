@@ -149,7 +149,7 @@ def evaluate_prompt_quality(st_id: str, prompt: str) -> Tuple[bool, list, list]:
 
 
 @st.cache_data(ttl=10)
-def check_ollama_status(target_model: str = "qwen2.5-coder:3b") -> dict:
+def check_ollama_status(target_model: str = "qwen2.5-coder:3b-4k") -> dict:
     """Ollama 서버 헬스체크 및 특정 모델 적재 여부를 확인합니다."""
     base_url = st.secrets.get("OLLAMA_BASE_URL", "http://100.102.25.109:11434")
     try:
@@ -178,9 +178,9 @@ def check_ollama_status(target_model: str = "qwen2.5-coder:3b") -> dict:
 def stream_local_ollama_qwen(
     prompt: str,
     system_prompt: str,
-    model_name: str = "qwen2.5-coder:3b",
+    model_name: str = "qwen2.5-coder:3b-4k",
 ) -> Generator[str, None, None]:
-    """Ubuntu 랩 서버(Tailscale IP: 100.102.25.109) Ollama Qwen2.5-Coder:3B 스트리밍 클라이언트."""
+    """Ubuntu 랩 서버(Tailscale IP: 100.102.25.109) Ollama Qwen2.5-Coder:3B-4k 스트리밍 클라이언트."""
     base_url = st.secrets.get("OLLAMA_BASE_URL", "http://100.102.25.109:11434")
     url = f"{base_url.rstrip('/')}/api/generate"
 
