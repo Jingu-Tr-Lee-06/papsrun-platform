@@ -5,6 +5,7 @@ import base64
 import os
 import streamlit as st
 
+from src.ai.gemini_client import check_ollama_status  # Ollama 서버 상태 함수 임포트
 from src.db.firebase_client import is_firestore_available
 from src.db.user_manager import (
     authenticate_user,
@@ -94,11 +95,21 @@ nav_links_html = "".join(
     for title, url in NAV_LINKS.items()
 )
 
+# 1. DB 상태 뱃지
 db_status_badge = (
     '<span class="db-badge" style="border-color:#bbf7d0; background:#f0fdf4; color:#15803d;">● Cloud Firestore Online</span>'
     if is_firestore_available()
     else '<span class="db-badge" style="border-color:#fef08a; background:#fefce8; color:#854d0e;">○ Local InMemory Mode</span>'
 )
+
+# 2. Ollama AI 서버 상태 뱃지
+ai_stat = check_ollama_status("qwen2.5-coder:3b")
+if ai_stat["online"] and ai_stat["model_loaded"]:
+    ai_status_badge = '<span class="db-badge" style="border-color:#bbf7d0; background:#f0fdf4; color:#15803d;">● AI Qwen 3B Online</span>'
+elif ai_stat["online"]:
+    ai_status_badge = '<span class="db-badge" style="border-color:#fed7aa; background:#fff7ed; color:#c2410c;">▲ AI Model Standby</span>'
+else:
+    ai_status_badge = '<span class="db-badge" style="border-color:#fecaca; background:#fef2f2; color:#b91c1c;">○ AI Server Offline</span>'
 
 st.markdown(
     f"""
@@ -107,8 +118,9 @@ st.markdown(
         <div class="nav-links">
             {nav_links_html}
         </div>
-        <div style="display:flex; align-items:center; gap:12px;">
+        <div style="display:flex; align-items:center; gap:8px;">
             {db_status_badge}
+            {ai_status_badge}
         </div>
     </div>
     """,
@@ -265,7 +277,7 @@ st.markdown(
             개별 사용자의 신체 건강 상태나 기상 악화 시 절대적 안전 지침 또는 의료적 판단의 근거가 될 수 없습니다.
         </div>
         <div class="footer-copyright">
-            © 2026 JH's SW Lab. All rights reserved. Powered by Google Gemini.
+            © 2026 JH's SW Lab. All rights reserved. Powered by Ollama (Qwen2.5-Coder:3B).
         </div>
     </div>
     """,
