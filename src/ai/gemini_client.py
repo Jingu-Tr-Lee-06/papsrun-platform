@@ -93,7 +93,6 @@ def check_prompt_success(st_id: str, prompt: str) -> Tuple[bool, list]:
     info = ROLE_CATALOG.get(st_id, ROLE_CATALOG["student_01"])
     p_lower = prompt.strip().lower()
     matched = [item for item in info["prompt_checklist"] if item.lower() in p_lower]
-    # 질문형이거나 단순 힌트 복사가 아닌, 25자 이상 요구조건 기술 + 필수 키워드 2개 이상
     is_success = (len(p_lower) >= 25 and len(matched) >= 2)
     return is_success, matched
 
@@ -177,7 +176,7 @@ def stream_hybrid_vibe_dialogue(
         yield f"💡 위 코드를 복사하여 `final_code/{info['team']}/{info['file']}`에 저장하세요."
         return
 
-    # 2. 역할이 배정되지 않은 경우: 자연스러운 안내 및 일상 질문 답변
+    # 2. 역할이 배정되지 않은 경우
     if not assigned_role:
         system_prompt = (
             "당신은 PAPSrun 고등학교 STEAM 코딩 수업의 AI 튜터 교사입니다.\n"
@@ -190,30 +189,29 @@ def stream_hybrid_vibe_dialogue(
             yield token
         return
 
-    # 3. 역할이 배정된 경우: 합격 조건 도달 여부 판정
+    # 3. 역할이 배정된 경우
     info = ROLE_CATALOG.get(assigned_role, ROLE_CATALOG["student_01"])
     is_success, matched = check_prompt_success(assigned_role, latest_user_text)
 
-    # 3-A. 우수한 프롬프트로 합격한 경우: Qwen의 라이브 칭찬 + final_code 원본 파일 그대로 내뱉기
+    # 3-A. 우수 프롬프트 합격 시: 칭찬 + final_code 원본 방출
     if is_success:
         master_code = read_master_code(assigned_role)
         system_praise = (
             f"당신은 친절한 STEAM 교사입니다. 학생이 [{assigned_role}] {info['title']} 모듈의 필수 조건({matched})을 "
             f"훌륭하게 프롬프트로 작성했습니다. 학생의 성장을 축하하고, 이 모듈이 캠퍼스 러닝 추천 시스템에서 어떤 역할을 "
-            f"하게 되는지 2~3문장으로 다정하게 칭찬해 주세요. (코드는 출력하지 마세요, 시스템이 바로 코드를 덧붙입니다)"
+            f"하게 되는지 2~3문장으로 다정하게 칭찬해 주세요. (코드는 출력하지 마세요)"
         )
         praise_history = [{"role": "system", "content": system_praise}] + messages
         yield "🎉 **훌륭해요! 제시한 요구 조건이 모두 충족되었습니다.**\n\n"
         for token in stream_qwen_raw(praise_history, temperature=0.4):
             yield token
 
-        # ✨ LLM 환각 없이 final_code 디렉토리의 실제 검증된 코드 원본을 그대로 방출
         yield f"\n\n📂 **검증된 마스터 원본 코드 (`final_code/{info['team']}/{info['file']}`)**:\n"
         yield f"```python\n{master_code}\n```\n\n"
         yield f"💡 위 코드를 그대로 복사하여 `final_code/{info['team']}/{info['file']}` 파일에 저장하세요!"
         return
 
-    # 3-B. 아직 조건이 부족하거나 질문을 하는 경우: Qwen이 라이브로 스캐폴딩 힌트 생성
+    # 3-B. 미흡한 경우: 실시간 스캐폴딩 힌트 생성
     system_guide = f"""
 당신은 PAPSrun 고등학교 STEAM 수업의 AI 튜터 교사입니다.
 학생은 현재 [{assigned_role}] {info['title']} 모듈을 작성하고 있습니다.
@@ -221,12 +219,59 @@ def stream_hybrid_vibe_dialogue(
 
 [행동 규칙]
 1. 절대로 완성된 파이썬 함수/정답 코드를 통째로 출력하지 마세요. (학생이 스스로 프롬프트를 다듬어야 합니다)
-2. 학생이 "모르겠어", "어려워", "코드 줘"라고 하면 격려하면서, 다음 단계를 유도하세요:
-   - 1단계: 어떤 물리 상황(예: 그늘에 들어가면 햇빛이 어떻게 되는지 등)이 빠졌는지 생각해 보도록 유도
-   - 2단계: 핵심 공식이나 방어할 상황(예: 일사량이 음수가 되는 오류 방어)에 대한 단서 제공
-   - 3단계: 자연어 프롬프트를 어떻게 작성하면 좋을지 문장의 뼈대 예시 제시
+2. 학생이 "모르겠어", "어려워", "코드 줘"라고 하면 격려하면서 단계를 유도하세요.
 3. 학생의 말에 귀 기울이며 다정하고 자연스러운 한국어 구어체로 대화하세요.
 """
     guide_history = [{"role": "system", "content": system_guide}] + messages
     for token in stream_qwen_raw(guide_history, temperature=0.5):
         yield token
+
+
+# =====================================================================
+# 📦 레거시 컴포넌트(vibe_chat_panel 등) 하위 호환성 심볼 및 함수
+# =====================================================================
+
+MASTER_COMPONENTS: Dict[str, Dict[str, Any]] = {
+    k: {
+        "name": v["title"],
+        "correct_code": f'# final_code/{v["team"]}/{v["file"]}',
+        "incomplete_code": f'# incomplete {v["file"]}',
+        "missing_features": v["core_concept"],
+    }
+    for k, v in ROLE_CATALOG.items()
+}
+for t in range(1, 5):
+    MASTER_COMPONENTS[f"TEAM_{t}"] = MASTER_COMPONENTS[f"student_{(t-1)*5 + 1:02d}"]
+
+
+def stream_gemini_vibe_code(team_id: str, user_prompt: str) -> Generator[str, None, None]:
+    """기존 호출부와의 호환을 위한 스트리머 래퍼."""
+    assigned_role = detect_role_from_prompt(user_prompt) or team_id
+    messages = [{"role": "user", "content": user_prompt}]
+    return stream_hybrid_vibe_dialogue(messages=messages, assigned_role=assigned_role)
+
+
+def request_gemini_vibe_code(team_id: str, user_prompt: str, api_key: Optional[str] = None) -> Tuple[str, str]:
+    """기존 vibe_chat_panel 호출용 동기 래퍼 함수."""
+    full_text = "".join(list(stream_gemini_vibe_code(team_id, user_prompt)))
+    code_match = re.search(r"```python(.*?)```", full_text, re.DOTALL)
+    code = code_match.group(1).strip() if code_match else read_master_code(team_id)
+    return code, full_text
+
+
+def generate_vibe_code(
+    user_requirements: str,
+    student_profile: Optional[Dict[str, Any]] = None,
+    weather_info: Optional[Dict[str, Any]] = None,
+) -> str:
+    team_id = (student_profile or {}).get("team_id", "student_01")
+    code, feedback = request_gemini_vibe_code(team_id=team_id, user_prompt=user_requirements)
+    return f"{feedback}\n\n```python\n{code}\n```"
+
+
+def is_gemini_available() -> bool:
+    return True
+
+
+def get_gemini_client(api_key: Optional[str] = None):
+    return None
