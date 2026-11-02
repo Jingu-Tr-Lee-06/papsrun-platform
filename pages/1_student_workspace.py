@@ -2,13 +2,14 @@
 
 1단계: 지형·환경 도로망 연속 작도 (Map Builder)
 2단계: 도로망 위상 및 연결성 진단 (Topology Checker)
-3단계: Gemini 바이브 코딩 & 다익스트라 경로 최적화 (Vibe Optimizer)
+3단계: Qwen 3B 바이브 코딩 & 다익스트라 경로 최적화 (Vibe Optimizer)
 4단계: 웹 VS Code 작업 영역 (VS Code Workspace)
 5단계: 엣지 디바이스 구동 및 산출물 리포트 (Edge Dispatch & Artifact)
 """
 
 import streamlit as st
 
+from src.ai.gemini_client import check_ollama_status
 from src.db.class_session_manager import get_class_session_config
 from src.geo.weather_engine import get_effective_weather_data
 from src.tabs.tab1_map_builder import render_tab1_map_builder
@@ -34,6 +35,19 @@ def render_student_workspace_page() -> None:
     # 1. 사이드바 세션 설정 및 프로필
     st.sidebar.title("🎓 학생 워크스페이스")
     st.sidebar.caption("PAPSrun 스마트 캠퍼스 러닝 코스 설계 프로젝트")
+
+    # 🤖 AI 튜터 서버 상태 체크 (사이드바 최상단)
+    ai_stat = check_ollama_status("qwen2.5:3b-4k")
+    if ai_stat["online"] and ai_stat["model_loaded"]:
+        st.sidebar.success("🟢 **AI 튜터: Online** (`Qwen 3B`)")
+    elif ai_stat["online"]:
+        st.sidebar.warning(f"🟡 **AI 튜터: Standby** ({ai_stat['msg']})")
+    else:
+        st.sidebar.error(f"🔴 **AI 튜터: Offline** ({ai_stat['msg']})")
+        with st.sidebar.expander("🛠️ AI 연결 실패 상세 원인"):
+            st.caption(f"**엔드포인트:** `{ai_stat['endpoint']}`")
+            if ai_stat.get("detail"):
+                st.code(ai_stat["detail"], language="text")
 
     class_code = st.sidebar.text_input(
         "학급 코드 (Class Code)",

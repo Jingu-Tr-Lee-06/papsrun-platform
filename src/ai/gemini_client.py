@@ -1,6 +1,6 @@
 ﻿"""PAPSrun 지능형 바이브 코딩 튜터 엔진 (3단계 교육학적 스캐폴딩 탑재).
 
-Ubuntu 랩 서버(Tailscale IP: 100.102.25.109)의 Ollama Qwen2.5-Coder:3B와 직접 통신합니다.
+Ubuntu 랩 서버(Tailscale Funnel / 로컬 IP)의 Ollama Qwen2.5:3b-4k와 통신합니다.
 학생의 실패 횟수(retry_count)를 세션별로 추적하여:
 1회 실패: 정답 힌트 없이 현상 환기 및 스스로 사고 촉진
 2회 실패: 핵심 과학/물리 개념 단서만 살짝 제공 (코드 노출 금지)
@@ -80,7 +80,6 @@ ROLE_CATALOG = {
     }
 }
 
-# 6~20번 학생 모듈 기본 스캐폴딩 템플릿
 for idx in range(6, 21):
     st_key = f"student_{idx:02d}"
     if st_key not in ROLE_CATALOG:
@@ -143,45 +142,71 @@ def evaluate_prompt_quality(st_id: str, prompt: str) -> Tuple[bool, list, list]:
     p_lower = prompt.strip().lower()
     matched = [item for item in info["prompt_checklist"] if item.lower() in p_lower]
     missing = [item for item in info["prompt_checklist"] if item.lower() not in p_lower]
-    # 25자 이상 + 필수 기술 키워드 2개 이상 명시 시에만 완성형 마스터 인정
     is_quality = (len(p_lower) >= 25 and len(matched) >= 2)
     return is_quality, matched, missing
 
 
-@st.cache_data(ttl=10)
-def check_ollama_status(target_model: str = "qwen2.5-coder:3b-4k") -> dict:
-    """Ollama 서버 헬스체크 및 특정 모델 적재 여부를 확인합니다."""
-    base_url = st.secrets.get("OLLAMA_BASE_URL", "http://100.102.25.109:11434")
+@st.cache_data(ttl=5)
+def check_ollama_status(target_model: str = "qwen2.5:3b-4k") -> dict:
+    """Ollama 서버 상태 및 모델 적재 여부, 세부 디버그 정보를 반환합니다."""
+    base_url = st.secrets.get("OLLAMA_BASE_URL", "https://lab-server.crayfish-coho.ts.net")
+    target_endpoint = f"{base_url.rstrip('/')}/api/tags"
+    
+    debug_info = {
+        "online": False,
+        "model_loaded": False,
+        "base_url": base_url,
+        "endpoint": target_endpoint,
+        "status_code": None,
+        "msg": "",
+        "detail": "",
+        "models": []
+    }
+
     try:
-        res = requests.get(f"{base_url.rstrip('/')}/api/tags", timeout=1.5)
-        if res.status_code != 200:
-            return {"online": False, "msg": f"서버 응답 오류({res.status_code})", "model_loaded": False}
-        
-        data = res.json()
-        models = [m.get("name", "") for m in data.get("models", [])]
-        is_model_present = any(target_model in m for m in models)
-        
-        return {
-            "online": True,
-            "msg": f"Ollama 연결됨 ({target_model})" if is_model_present else "Ollama 구동 중 (모델 미발견)",
-            "model_loaded": is_model_present,
-            "models": models
-        }
+        res = requests.get(target_endpoint, timeout=4.0)
+        debug_info["status_code"] = res.status_code
+
+        if res.status_code == 200:
+            data = res.json()
+            models = [m.get("name", "") for m in data.get("models", [])]
+            debug_info["models"] = models
+            
+            is_model_present = any(target_model in m or "3b" in m for m in models)
+            debug_info["online"] = True
+            debug_info["model_loaded"] = is_model_present
+            
+            if is_model_present:
+                debug_info["msg"] = f"정상 연결 ({target_model})"
+            else:
+                debug_info["msg"] = f"서버 구동 중 (모델 불일치: 보유 목록 {models})"
+        else:
+            debug_info["msg"] = f"HTTP {res.status_code} 오류"
+            debug_info["detail"] = res.text[:200]
+
     except requests.exceptions.Timeout:
-        return {"online": False, "msg": "응답 시간 초과", "model_loaded": False}
-    except requests.exceptions.ConnectionError:
-        return {"online": False, "msg": "서버 오프라인", "model_loaded": False}
+        debug_info["msg"] = "응답 시간 초과 (4초)"
+        debug_info["detail"] = f"서버가 4초 내에 응답하지 않았습니다. URL: {target_endpoint}"
+    except requests.exceptions.SSLError as e:
+        debug_info["msg"] = "SSL 인증서 오류"
+        debug_info["detail"] = str(e)
+    except requests.exceptions.ConnectionError as e:
+        debug_info["msg"] = "네트워크 연결 거부 / 도메인 조회 실패"
+        debug_info["detail"] = str(e)
     except Exception as e:
-        return {"online": False, "msg": f"연결 실패: {str(e)}", "model_loaded": False}
+        debug_info["msg"] = "통신 예외 발생"
+        debug_info["detail"] = str(e)
+
+    return debug_info
 
 
 def stream_local_ollama_qwen(
     prompt: str,
     system_prompt: str,
-    model_name: str = "qwen2.5-coder:3b-4k",
+    model_name: str = "qwen2.5:3b-4k",
 ) -> Generator[str, None, None]:
-    """Ubuntu 랩 서버(Tailscale IP: 100.102.25.109) Ollama Qwen2.5-Coder:3B-4k 스트리밍 클라이언트."""
-    base_url = st.secrets.get("OLLAMA_BASE_URL", "http://100.102.25.109:11434")
+    """Ubuntu 랩 서버 Ollama Qwen 3B 스트리밍 클라이언트."""
+    base_url = st.secrets.get("OLLAMA_BASE_URL", "https://lab-server.crayfish-coho.ts.net")
     url = f"{base_url.rstrip('/')}/api/generate"
 
     payload = {
@@ -206,20 +231,18 @@ def stream_local_ollama_qwen(
             else:
                 yield f"\n⚠️ [서버 응답 코드: {res.status_code}]\n"
     except requests.exceptions.ConnectionError:
-        yield "\n⚠️ [Ubuntu 랩 서버(100.102.25.109:11434)와 연결할 수 없습니다. Tailscale 접속 상태를 확인해 주세요.]\n"
+        yield "\n⚠️ [Ubuntu 랩 서버와 연결할 수 없습니다. Funnel 또는 네트워크 상태를 확인하세요.]\n"
     except Exception as e:
         yield f"\n⚠️ [AI 추론 통신 중 오류: {str(e)}]\n"
 
 
 def stream_gemini_vibe_code(team_id: str, user_prompt: str) -> Generator[str, None, None]:
-    """학생의 입력에 따라 3단계 스캐폴딩 피드백 및 정답 코드를 단계적으로 제공합니다."""
+    """학생 입력에 맞춰 3단계 스캐폴딩 피드백 및 정답 코드를 제공합니다."""
     prompt_clean = user_prompt.strip()
 
-    # 시도 횟수(retry_count) 세션 초기화
     if "prompt_retry_count" not in st.session_state:
         st.session_state["prompt_retry_count"] = 0
 
-    # 1. 교사용 비상 마스터키 오버라이드
     hidden_target = check_hidden_master_command(prompt_clean)
     if hidden_target:
         st.session_state["assigned_student_role"] = hidden_target
@@ -230,11 +253,9 @@ def stream_gemini_vibe_code(team_id: str, user_prompt: str) -> Generator[str, No
         yield f"💡 위 코드를 복사하여 `final_code/{info['team']}/{info['file']}`에 바로 저장하세요."
         return
 
-    # 2. 역할 판별
     active_role = st.session_state.get("assigned_student_role")
     detected = detect_role_from_prompt(prompt_clean)
 
-    # 2-A. 최초 역할 진입
     if not active_role and detected:
         st.session_state["assigned_student_role"] = detected
         st.session_state["prompt_retry_count"] = 0
@@ -257,7 +278,6 @@ def stream_gemini_vibe_code(team_id: str, user_prompt: str) -> Generator[str, No
     master_code = read_master_code(active_role)
     is_quality, matched, missing = evaluate_prompt_quality(active_role, prompt_clean)
 
-    # 3-A. 프롬프트가 부실한 경우 -> 3단계 스캐폴딩 적용
     if not is_quality:
         st.session_state["prompt_retry_count"] += 1
         current_step = min(st.session_state["prompt_retry_count"], 3)
@@ -279,8 +299,7 @@ def stream_gemini_vibe_code(team_id: str, user_prompt: str) -> Generator[str, No
             yield "👉 *위 예시 문장을 참고하여 내 생각을 담은 온전한 문장으로 요청해 보세요!*"
         return
 
-    # 3-B. 프롬프트가 구체적이고 우수한 경우 -> 성공 축하 및 마스터 코드 지급
-    st.session_state["prompt_retry_count"] = 0  # 성공 시 카운트 리셋
+    st.session_state["prompt_retry_count"] = 0
     yield f"🎉 **대단해요! 요구하신 조건({', '.join(matched)})이 모두 명확하게 반영된 완성형 코드입니다.**\n\n"
     yield f"```python\n{master_code}\n```\n\n"
     yield "👨‍🏫 **선생님의 파이프라인 해설:**\n"

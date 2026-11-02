@@ -1,144 +1,125 @@
-"""Ollama Qwen2.5-Coder:3B 기반 자연어 최적화 바이브 코딩(Vibe Coding) 및 경로 피드백 엔진.
+"""PAPSrun 지능형 바이브 코더 모듈.
 
-Ubuntu 랩 서버(Tailscale IP: 100.102.25.109)와 통신하여
-학생이 입력한 자연어 요구 조건을 NetworkX 다익스트라 가중치 함수 코드로 변환하고,
-도출된 러닝 코스의 물리·생리학적 지표를 체육 교육학적 관점에서 종합 평가합니다.
+Ubuntu 랩 서버의 Ollama Qwen2.5:3b-4k와 통신하여 학생의 자연어 요구사항을 바탕으로
+모듈 코드 생성, 코드 리뷰, 최적화 제안을 수행합니다.
 """
 
 import json
+import os
 import re
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional
 import requests
 import streamlit as st
 
 
-def _call_ollama_generate(system_prompt: str, user_content: str, model_name: str = "qwen2.5-coder:3b-4k") -> str:
-    """Ubuntu 랩 서버 Ollama REST API를 호출하여 전체 텍스트 응답을 수신합니다."""
-    base_url = st.secrets.get("OLLAMA_BASE_URL", "http://100.102.25.109:11434")
-    url = f"{base_url.rstrip('/')}/api/generate"
+def _get_ollama_base_url() -> str:
+    """Streamlit Secrets 또는 기본 Funnel URL에서 Ollama 엔드포인트를 가져옵니다."""
+    return st.secrets.get("OLLAMA_BASE_URL", "https://lab-server.crayfish-coho.ts.net").rstrip("/")
 
+
+def _call_ollama_generate(
+    system_prompt: str,
+    user_content: str,
+    model_name: str = "qwen2.5:3b-4k",
+    temperature: float = 0.3,
+    max_tokens: int = 500,
+) -> str:
+    """Ollama API의 /api/generate 엔드포인트를 호출하여 결과를 텍스트로 반환합니다."""
+    url = f"{_get_ollama_base_url()}/api/generate"
     payload = {
         "model": model_name,
         "prompt": user_content,
         "system": system_prompt,
         "stream": False,
         "options": {
-            "temperature": 0.2,
-            "num_predict": 400,
+            "temperature": temperature,
+            "num_predict": max_tokens,
         },
     }
-
     try:
         response = requests.post(url, json=payload, timeout=30.0)
         if response.status_code == 200:
-            result = response.json()
-            return result.get("response", "").strip()
-        else:
-            raise RuntimeError(f"Ollama 서버 응답 코드 오류: {response.status_code}")
+            return response.json().get("response", "").strip()
+        return f"# [AI 서버 오류] 상태 코드: {response.status_code}\n# {response.text[:200]}"
+    except requests.exceptions.Timeout:
+        return "# [AI 서버 오류] 응답 시간(30초) 초과"
+    except requests.exceptions.ConnectionError:
+        return "# [AI 서버 오류] Ollama 서버에 연결할 수 없습니다. Tailscale Funnel 상태를 확인하세요."
     except Exception as e:
-        raise RuntimeError(f"Ollama 추론 연결 실패: {str(e)}")
+        return f"# [AI 서버 오류] {str(e)}"
 
 
-def generate_weight_function_code(prompt: str) -> Tuple[str, str]:
-    """학생의 자연어 프롬프트를 입력받아 다익스트라 가중치 함수 파이썬 코드를 생성합니다.
-
-    Args:
-        prompt: 학생이 입력한 러닝 최적화 요구 사항 (자연어)
-
-    Returns:
-        (실행 가능한 파이썬 코드 문자열, AI 설계 의도 설명)
-    """
-    system_instruction = (
-        "너는 지능형 러닝 경로 최적화 플랫폼 PAPSrun의 AI 파이썬 가중치 함수 빌더다.\n"
-        "학생이 자연어로 입력한 요구 조건을 분석하여, NetworkX 다익스트라 최단 경로 탐색에 사용될\n"
-        "파이썬 함수 `custom_weight_fn(u, v, data)`의 본문 코드를 작성해야 한다.\n\n"
-        "간선 데이터 딕셔너리(`data`)에서 활용 가능한 키 속성:\n"
-        "- `length_m` (float): 구간 거리(미터)\n"
-        "- `slope_pct` (float): 노면 경사도(%, 양수: 오르막, 음수: 내리막)\n"
-        "- `shade_pct` (float): 수목/건물 그늘 비율(0.0 ~ 100.0)\n"
-        "- `surface_type` (str): 노면 종류 ('track', 'urethane', 'asphalt', 'sidewalk', 'dirt')\n"
-        "- `rn_wm2` (float): 순복사에너지 지표(W/m², 높을수록 직사광선 온열 부하 심함)\n\n"
-        "반드시 지켜야 할 엄격한 규칙:\n"
-        "1. 함수 정의 이름은 반드시 `def custom_weight_fn(u, v, data):` 여야 한다.\n"
-        "2. 반환값은 0보다 큰 양의 실수(float, 최소 0.01 이상)여야 한다.\n"
-        "3. 외부 라이브러리 import나 시스템 접근 코드(os, sys 등)는 절대 포함하지 않는다.\n"
-        "4. 마크다운 코드 블록(```python ... ```)으로 묶어서 출력하고, 블록 뒤에 [설계 의도] 1~2줄을 덧붙여라."
+def generate_module_code(
+    component_name: str,
+    requirements: str,
+    existing_code: Optional[str] = None,
+    target_role: Optional[str] = None,
+) -> Dict[str, Any]:
+    """학생의 요구사항을 받아 완전한 파이썬 모듈 코드를 생성합니다."""
+    system_prompt = (
+        "당신은 고등학교 파이썬 교육용 러닝 최적화 플랫폼 PAPSrun의 전문 알고리즘 튜터입니다.\n"
+        "학생의 자연어 요구사항을 바탕으로 안전하고 명확한 파이썬 함수/클래스를 작성해야 합니다.\n"
+        "반드시 다음 원칙을 준수하세요:\n"
+        "1. 방어적 프로그래밍(예외 처리, 0으로 나누기 방지, 음수 클램핑 등)을 철저히 반영합니다.\n"
+        "2. 코드는 마크다운 코드 블록(```python ... ```)으로 감싸서 출력하세요.\n"
+        "3. 코드 하단에 핵심 로직에 대한 간단한 주석이나 1~2문장의 교육적 설명을 덧붙이세요."
     )
 
-    try:
-        raw_text = _call_ollama_generate(system_instruction, prompt)
+    user_prompt = f"### 대상 컴포넌트: {component_name}\n"
+    if target_role:
+        user_prompt += f"### 담당 역할: {target_role}\n"
+    if existing_code:
+        user_prompt += f"### 기존 코드:\n```python\n{existing_code}\n```\n"
+    user_prompt += f"### 구현 요구사항:\n{requirements}\n"
 
-        code_match = re.search(r"```python\s*(def custom_weight_fn[\s\S]*?)```", raw_text)
-        if code_match:
-            generated_code = code_match.group(1).strip()
-            explanation = re.sub(r"```[\s\S]*?```", "", raw_text).strip()
-            if not explanation:
-                explanation = "학생의 러닝 조건에 맞추어 맞춤형 가중치 페널티와 보너스가 반영되었습니다."
-            return generated_code, explanation
+    raw_response = _call_ollama_generate(system_prompt, user_prompt, temperature=0.25, max_tokens=600)
 
-        return raw_text, "자연어 기반 가중치 함수가 생성되었습니다."
+    # 코드 블록 추출
+    code_match = re.search(r"```python(.*?)```", raw_response, re.DOTALL)
+    if code_match:
+        extracted_code = code_match.group(1).strip()
+        explanation = re.sub(r"```python.*?```", "", raw_response, flags=re.DOTALL).strip()
+    else:
+        extracted_code = raw_response
+        explanation = "코드가 직접 생성되었습니다."
 
-    except Exception as e:
-        # 비상 폴백 규칙 모델
-        fallback_code = (
-            "def custom_weight_fn(u, v, data):\n"
-            "    length = data.get('length_m', 50.0)\n"
-            "    slope = data.get('slope_pct', 0.0)\n"
-            "    shade = data.get('shade_pct', 0.0)\n"
-            "    surface = data.get('surface_type', 'asphalt')\n"
-            "    slope_penalty = max(0.0, slope) * 2.5 if slope > 0 else abs(slope) * 0.5\n"
-            "    shade_discount = (shade / 100.0) * 0.35\n"
-            "    surface_mult = 0.85 if surface in ['track', 'urethane', 'dirt'] else 1.0\n"
-            "    cost = length * (1.0 + slope_penalty) * (1.0 - shade_discount) * surface_mult\n"
-            "    return max(0.1, cost)\n"
-        )
-        return fallback_code, f"로컬 AI 서버 연결 제한({str(e)}). 표준 안전 가중치 템플릿을 적용합니다."
+    return {
+        "success": True if "오류" not in extracted_code else False,
+        "code": extracted_code,
+        "explanation": explanation,
+        "raw_response": raw_response,
+    }
 
 
-def compile_custom_weight_function(code_str: str) -> Optional[Callable[[Any, Any, Dict[str, Any]], float]]:
-    """문자열 형태의 파이썬 코드를 런타임에서 안전하게 컴파일하여 실행 가능한 함수 객체로 반환합니다."""
-    local_scope: Dict[str, Any] = {}
-    try:
-        safe_builtins = {
-            "abs": abs,
-            "min": min,
-            "max": max,
-            "round": round,
-            "float": float,
-            "int": int,
-            "pow": pow,
-        }
-        restricted_globals = {"__builtins__": safe_builtins}
-        exec(code_str, restricted_globals, local_scope)
-
-        func = local_scope.get("custom_weight_fn")
-        if callable(func):
-            return func
-        return None
-    except Exception:
-        return None
-
-
-def generate_running_route_feedback(route_metrics: Dict[str, Any], user_goal: str) -> str:
-    """도출된 최종 러닝 경로의 지표를 바탕으로 체육·생리학적 피드백 리포트를 작성합니다."""
-    system_instruction = (
-        "너는 중·고등학교 체육 및 운동생리학 전문가이자 PAPSrun 시스템의 AI 코치다.\n"
-        "도출된 러닝 경로 데이터를 분석하여 친절하고 전문적인 3줄 내외 불릿포인트 리포트를 작성하라."
-    )
-    user_content = (
-        f"학생이 설정한 운동 목표: '{user_goal}'\n\n"
-        f"[도출된 최적 러닝 경로 측정 지표]:\n"
-        f"- 총 이동 거리: {route_metrics.get('total_distance_m', 0):.1f} m\n"
-        f"- 누적 상승 고도: {route_metrics.get('elevation_gain_m', 0):.1f} m\n"
-        f"- 평균 구간 경사도: {route_metrics.get('avg_slope_pct', 0):.2f} %\n"
-        f"- 평균 그늘 차광율: {route_metrics.get('avg_shade_pct', 0):.1f} %\n"
-        f"- 우레탄/트랙 노면 비율: {route_metrics.get('cushion_ratio_pct', 0):.1f} %"
+def review_student_code(code: str, requirements: str) -> Dict[str, Any]:
+    """학생이 작성한 코드를 요구사항과 대조하여 품질 및 논리 결함을 진단합니다."""
+    system_prompt = (
+        "당신은 학생들의 알고리즘 코드를 검토하는 친절한 교사입니다.\n"
+        "코드의 물리/수학적 공식 반영 여부, 제로 디비전 및 결측값 방어 여부를 검토하고\n"
+        "칭찬할 점, 보완할 점, 그리고 개선 방향을 3줄 이내로 명확하게 피드백하세요."
     )
 
-    try:
-        return _call_ollama_generate(system_instruction, user_content)
-    except Exception:
-        return (
-            "✅ **경로 분석 완료**: 선택하신 경로는 학생의 관절 보호 및 체온 조절에 최적화된 상태입니다. "
-            "충분한 수분 섭취와 함께 안전하게 운동을 수행하세요."
-        )
+    user_prompt = (
+        f"### 요구사항:\n{requirements}\n\n"
+        f"### 학생 코드:\n```python\n{code}\n```\n\n"
+        "위 코드를 평가해 주세요."
+    )
+
+    feedback = _call_ollama_generate(system_prompt, user_prompt, temperature=0.3, max_tokens=350)
+
+    return {
+        "feedback": feedback,
+    }
+
+
+def optimize_vibe_prompt(rough_prompt: str) -> str:
+    """학생이 입력한 모호하거나 단순한 프롬프트를 구체적인 AI 지시문으로 개선합니다."""
+    system_prompt = (
+        "당신은 프롬프트 엔지니어링 튜터입니다.\n"
+        "학생이 입력한 짧거나 모호한 코딩 프롬프트를, AI가 정확한 파이썬 코드를 작성할 수 있도록\n"
+        "입력 변수, 물리/수학 수식, 예외 방어 조건이 포함된 1~2개의 구체적인 지시 문장으로 다듬어주세요.\n"
+        "결과 문장만 따옴표 안에 깔끔하게 출력하세요."
+    )
+
+    user_prompt = f"학생의 원본 프롬프트: '{rough_prompt}'"
+    return _call_ollama_generate(system_prompt, user_prompt, temperature=0.4, max_tokens=200)

@@ -5,7 +5,7 @@ import base64
 import os
 import streamlit as st
 
-from src.ai.gemini_client import check_ollama_status  # Ollama 서버 상태 함수 임포트
+from src.ai.gemini_client import check_ollama_status
 from src.db.firebase_client import is_firestore_available
 from src.db.user_manager import (
     authenticate_user,
@@ -102,14 +102,27 @@ db_status_badge = (
     else '<span class="db-badge" style="border-color:#fef08a; background:#fefce8; color:#854d0e;">○ Local InMemory Mode</span>'
 )
 
-# 2. Ollama AI 서버 상태 뱃지
-ai_stat = check_ollama_status("qwen2.5-coder:3b")
+# 2. Ollama AI 서버 상태 뱃지 (상세 툴팁 포함)
+ai_stat = check_ollama_status("qwen2.5:3b-4k")
+tooltip_msg = f"URL: {ai_stat['endpoint']}\n상태: {ai_stat['msg']}"
+if ai_stat.get("detail"):
+    tooltip_msg += f"\n세부: {ai_stat['detail'][:120]}"
+
 if ai_stat["online"] and ai_stat["model_loaded"]:
-    ai_status_badge = '<span class="db-badge" style="border-color:#bbf7d0; background:#f0fdf4; color:#15803d;">● AI Qwen 3B Online</span>'
+    ai_status_badge = (
+        f'<span class="db-badge" style="border-color:#bbf7d0; background:#f0fdf4; color:#15803d; cursor:pointer;" '
+        f'title="{tooltip_msg}">● AI Qwen 3B Online</span>'
+    )
 elif ai_stat["online"]:
-    ai_status_badge = '<span class="db-badge" style="border-color:#fed7aa; background:#fff7ed; color:#c2410c;">▲ AI Model Standby</span>'
+    ai_status_badge = (
+        f'<span class="db-badge" style="border-color:#fed7aa; background:#fff7ed; color:#c2410c; cursor:pointer;" '
+        f'title="{tooltip_msg}">▲ AI Model Standby</span>'
+    )
 else:
-    ai_status_badge = '<span class="db-badge" style="border-color:#fecaca; background:#fef2f2; color:#b91c1c;">○ AI Server Offline</span>'
+    ai_status_badge = (
+        f'<span class="db-badge" style="border-color:#fecaca; background:#fef2f2; color:#b91c1c; cursor:pointer;" '
+        f'title="{tooltip_msg}">○ AI Server Offline</span>'
+    )
 
 st.markdown(
     f"""
@@ -261,6 +274,15 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# AI 서버 연결 실패 시 하단에 노출되는 진단 리포트 패널
+if not (ai_stat["online"] and ai_stat["model_loaded"]):
+    with st.expander("🛠️ AI 서버 진단 정보 (오프라인 상태 분석)", expanded=False):
+        st.write(f"- **시도한 엔드포인트**: `{ai_stat['endpoint']}`")
+        st.write(f"- **판정 상태**: {ai_stat['msg']}")
+        st.write(f"- **HTTP 응답 코드**: `{ai_stat['status_code']}`")
+        if ai_stat.get("detail"):
+            st.code(ai_stat["detail"], language="text")
+
 st.markdown(
     f"""
     <div class="clean-footer">
@@ -277,7 +299,7 @@ st.markdown(
             개별 사용자의 신체 건강 상태나 기상 악화 시 절대적 안전 지침 또는 의료적 판단의 근거가 될 수 없습니다.
         </div>
         <div class="footer-copyright">
-            © 2026 JH's SW Lab. All rights reserved. Powered by Ollama (Qwen2.5-Coder:3B).
+            © 2026 JH's SW Lab. All rights reserved. Powered by Ollama (Qwen2.5:3b-4k).
         </div>
     </div>
     """,
