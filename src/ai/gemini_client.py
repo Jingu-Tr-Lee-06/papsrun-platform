@@ -1,17 +1,13 @@
-﻿"""PAPSrun 지능형 바이브 코딩 튜터 엔진 (3단계 교육학적 스캐폴딩 탑재).
+﻿"""PAPSrun 지능형 바이브 코딩 튜터 엔진 (Live LLM + Strict Master Code Pipeline).
 
-Ubuntu 랩 서버(Tailscale Funnel / 로컬 IP)의 Ollama Qwen2.5:3b-4k와 통신합니다.
-학생의 실패 횟수(retry_count)를 세션별로 추적하여:
-1회 실패: 정답 힌트 없이 현상 환기 및 스스로 사고 촉진
-2회 실패: 핵심 과학/물리 개념 단서만 살짝 제공 (코드 노출 금지)
-3회 이상: 자연어 프롬프트 작성 뼈대 문장 제시
-우수 프롬프트 입력 시에만 최종 마스터 코드를 지급합니다.
+- 일상 대화, 유도 질문, 힌트 피드백: Ubuntu 랩 서버의 Qwen2.5:3b-4k 모델이 실시간 스트리밍
+- 최종 정상 코드: 임의 생성을 전면 차단하고 final_code/{team}/{file} 원본 코드를 그대로 인출
 """
 
 import json
 import os
 import re
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional, Tuple
 import requests
 import streamlit as st
 
@@ -20,63 +16,33 @@ FINAL_CODE_DIR = os.path.join(os.getcwd(), "final_code")
 ROLE_CATALOG = {
     "student_01": {
         "team": "team1", "file": "student_01_albedo.py", "title": "노면 피복별 알베도(반사율) 매핑",
-        "keywords": ["알베도", "반사율", "노면", "아스팔트", "우레탄", "잔디", "흙길", "1번"],
-        "prompt_checklist": ["알베도", "노면", "우레탄", "아스팔트", "예외", "기본값"],
-        "defect_desc": "노면 재질별 알베도 사전 매핑 및 미지정 노면 기본값 방어 누락",
-        "scaffold_hints": [
-            "도로 바닥 재질(아스팔트, 우레탄, 잔디)에 따라 햇빛이 반사되는 정도가 다르다는 점을 AI에게 알려줘야 해요!",
-            "지구과학 시간에 배운 아스팔트와 우레탄의 반사율 수치를 명시하고, 알 수 없는 길일 때 적용할 기본값도 요청해 보세요.",
-            "이렇게 써보세요: '우레탄, 아스팔트, 잔디의 반사율을 매핑하고, 목록에 없으면 기본값 0.15를 주는 함수 짜줘'"
-        ],
-        "buggy_code": "def get_surface_albedo(surface_type: str) -> float:\n    # ⚠️ 결함: 노면 재질 구분 없이 단일 값만 반환\n    return 0.15"
+        "keywords": ["알베도", "반사율", "노면", "아스팔트", "우레탄", "잔디", "흙길", "1번", "1"],
+        "prompt_checklist": ["알베도", "노면", "우레탄", "아스팔트", "기본값", "0.15"],
+        "core_concept": "아스팔트(0.12), 우레탄(0.20), 잔디(0.25) 등 도로 재질별 반사율 매핑 및 미지정 노면 기본값(0.15) 방어",
     },
     "student_02": {
         "team": "team1", "file": "student_02_solar.py", "title": "가로수 그늘 차광률 및 유효 일사량 연산",
-        "keywords": ["그늘", "차광", "일사량", "가로수", "차광막", "태양", "햇빛", "2번"],
-        "prompt_checklist": ["그늘", "차광", "70%", "0.3", "클램핑", "음수", "방어"],
-        "defect_desc": "그늘일 때 일사량 70% 차광 감쇄 및 음수 일사량 방어 누락",
-        "scaffold_hints": [
-            "지금 코드는 그늘진 숲길을 지나가도 한낮 땡볕과 똑같은 열을 받는 치명적인 버그가 있어요! 무엇을 고려해야 할까요?",
-            "가로수 그늘이 햇빛을 몇 %나 막아주는지(감쇄율), 그리고 센서 오류로 일사량이 0 미만(음수)으로 떨어지는 상황을 어떻게 막을지 문장에 담아보세요.",
-            "이렇게 써보세요: '그늘(is_shaded)일 때는 일사량을 70% 줄이고, 일사량이 음수가 되지 않게 0으로 방어하는 함수를 만들어줘'"
-        ],
-        "buggy_code": "def calculate_effective_solar(solar_w_m2: float, is_shaded: bool = False) -> float:\n    # ⚠️ 결함: 그늘 감쇄 로직과 음수 일사량 방어가 빠져있음\n    return float(solar_w_m2)"
+        "keywords": ["그늘", "차광", "일사량", "가로수", "차광막", "태양", "햇빛", "2번", "2"],
+        "prompt_checklist": ["그늘", "차광", "70%", "0.3", "음수", "0", "방어", "max"],
+        "core_concept": "그늘일 때 일사량 70% 차광(투과율 0.3) 및 센서 오류로 인한 음수 일사량을 0으로 막는 방어 로직",
     },
     "student_03": {
         "team": "team1", "file": "student_03_radiation.py", "title": "지표면 순흡수 복사에너지 연산",
-        "keywords": ["복사에너지", "순흡수", "r_abs", "흡수열", "복사열", "3번"],
+        "keywords": ["복사에너지", "순흡수", "r_abs", "흡수열", "복사열", "3번", "3"],
         "prompt_checklist": ["r_abs", "순흡수", "알베도", "1 -", "흡수"],
-        "defect_desc": "순흡수 공식 R_abs = S * (1 - albedo) 누락",
-        "scaffold_hints": [
-            "바닥이 반사한 열과 바닥이 실제로 흡수해서 러너를 뜨겁게 달구는 열은 달라요. 물리 공식이 빠져 있습니다!",
-            "알베도가 반사율이라면, 지표면이 '흡수'하는 비율은 수식으로 어떻게 표현했었죠?",
-            "이렇게 써보세요: '일사량에 (1 - 알베도)를 곱해서 노면이 실제로 흡수하는 순흡수 복사에너지를 구하도록 해줘'"
-        ],
-        "buggy_code": "def calculate_absorbed_radiation(solar_w_m2: float, albedo: float) -> float:\n    # ⚠️ 결함: 반사율을 그대로 곱해버려 물리 공식 왜곡\n    return solar_w_m2 * albedo"
+        "core_concept": "순흡수 복사에너지 공식: R_abs = S * (1 - albedo). 반사율을 제외한 실제 흡수율 연산",
     },
     "student_04": {
         "team": "team1", "file": "student_04_slope_dem.py", "title": "지형 고도차 기반 간선 경사도 산출",
-        "keywords": ["경사", "경사도", "고도", "dem", "오르막", "내리막", "4번"],
-        "prompt_checklist": ["고도", "경사도", "거리", "100", "0 나누기", "방어"],
-        "defect_desc": "수평 거리가 0일 때의 ZeroDivision 방어 누락",
-        "scaffold_hints": [
-            "두 지점의 거리가 0인 데이터가 들어오면 프로그램 전체가 멈춰버려요!",
-            "경사도를 계산할 때 고도차를 무엇으로 나누는지, 그 분모가 0일 때는 어떤 처리를 해야 안전할지 생각해 보세요.",
-            "이렇게 써보세요: '고도차를 거리로 나누어 경사도를 구하되, 거리가 0이면 경사도를 0으로 처리하게 해줘'"
-        ],
-        "buggy_code": "def calculate_edge_slope(ele_start: float, ele_end: float, distance_m: float) -> float:\n    # ⚠️ 결함: 거리가 0일 때 프로그램 다운 방어 누락\n    return ((ele_end - ele_start) / distance_m) * 100.0"
+        "keywords": ["경사", "경사도", "고도", "dem", "오르막", "내리막", "4번", "4"],
+        "prompt_checklist": ["고도", "경사도", "거리", "100", "0", "방어"],
+        "core_concept": "경사도(%) 공식: (고도차 / 거리) * 100 및 거리가 0일 때의 ZeroDivision 방어",
     },
     "student_05": {
         "team": "team1", "file": "student_05_failsafe.py", "title": "33도 폭염 Fail-Safe 안전 제어",
-        "keywords": ["폭염", "failsafe", "안전", "33도", "인터락", "중단", "5번"],
+        "keywords": ["폭염", "failsafe", "안전", "33도", "인터락", "중단", "5번", "5"],
         "prompt_checklist": ["33", "폭염", "failsafe", "차단", "중단", "인터락"],
-        "defect_desc": "33도 이상 시 야외 활동 중단 인터락 누락",
-        "scaffold_hints": [
-            "살인적인 폭염 경보가 내려져도 학생들을 무조건 뛰게 만드는 위험한 상태예요!",
-            "기상청 폭염 경보 기준 온도가 몇 도였는지, 그 온도를 넘으면 코드가 무엇을 반환해야 할지 명시해 보세요.",
-            "이렇게 써보세요: '기온이 33도 이상이면 위험으로 판정하고 야외 질주를 즉시 차단하는 인터락을 걸어줘'"
-        ],
-        "buggy_code": "def check_heatwave_failsafe(temperature: float) -> bool:\n    # ⚠️ 결함: 안전 인터락 없이 무조건 통과\n    return True"
+        "core_concept": "33도 이상 시 야외 활동 중단 및 실내 대체 코스로 전환하는 안전 인터락",
     }
 }
 
@@ -85,27 +51,15 @@ for idx in range(6, 21):
     if st_key not in ROLE_CATALOG:
         team_dir = "team2" if idx <= 10 else ("team3" if idx <= 15 else "team4")
         ROLE_CATALOG[st_key] = {
-            "team": team_dir, "file": f"{st_key}_module.py", "title": f"{idx}번 알고리즘 컴포넌트",
+            "team": team_dir, "file": f"{st_key}_module.py", "title": f"{idx}번 알고리즘 모듈",
             "keywords": [f"{idx}번", f"{idx}"],
             "prompt_checklist": ["수식", "방어", "계산", "변수"],
-            "defect_desc": "핵심 공식 및 이상치 방어 로직 누락",
-            "scaffold_hints": [
-                "요구사항이 너무 짧아서 필요한 수식이 전혀 반영되지 않았어요. 어떤 기능을 만들고 싶나요?",
-                "입력값으로 들어올 변수와 최종 계산 공식, 비정상적인 데이터가 들어왔을 때의 방어 조건을 고민해 보세요.",
-                "이렇게 써보세요: 'OO 변수와 OO 공식을 사용해서 계산하고, 비정상 값은 방어하는 함수를 만들어줘'"
-            ],
-            "buggy_code": f"def process_{st_key}(data: dict) -> dict:\n    # ⚠️ 결함: 필수 로직 누락\n    return data"
+            "core_concept": f"{idx}번 파이프라인의 물리/수학 공식 및 이상치 방어 로직",
         }
 
 
-def check_hidden_master_command(user_text: str) -> Optional[str]:
-    """교사용 오버라이드 커맨드 감지 ($$answer-student_X)."""
-    match = re.search(r"\$\$answer-student_?([1-9]|1[0-9]|20)\b", user_text.strip().lower())
-    return f"student_{int(match.group(1)):02d}" if match else None
-
-
 def detect_role_from_prompt(user_text: str) -> Optional[str]:
-    """학생 프롬프트에서 담당 파트 식별."""
+    """학생 입력에서 담당 모듈 식별."""
     text_lower = user_text.lower()
     num_match = re.search(r"\b([1-9]|1[0-9]|20)\s*(?:번|학생|호)?\b", text_lower)
     if num_match:
@@ -116,13 +70,12 @@ def detect_role_from_prompt(user_text: str) -> Optional[str]:
 
 
 def read_master_code(st_id: str) -> str:
-    """final_code 폴더에서 학생별 완성 코드를 읽어오며, 다중 경로를 탐색합니다."""
+    """final_code 폴더에서 엄격하게 원본 정답 코드를 읽어옵니다."""
     info = ROLE_CATALOG.get(st_id, ROLE_CATALOG["student_01"])
     candidate_paths = [
         os.path.join(os.getcwd(), "final_code", info["team"], info["file"]),
         os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "final_code", info["team"], info["file"]),
     ]
-
     for fpath in candidate_paths:
         if os.path.exists(fpath):
             try:
@@ -132,221 +85,148 @@ def read_master_code(st_id: str) -> str:
                         return content
             except Exception:
                 pass
+    return f"# [알림] final_code/{info['team']}/{info['file']} 파일이 존재하지 않습니다.\ndef {info['file'].replace('.py', '')}():\n    pass"
 
-    return f"# [주의] final_code/{info['team']}/{info['file']} 파일이 존재하지 않습니다.\ndef {info['file'].replace('.py', '')}():\n    pass"
 
-
-def evaluate_prompt_quality(st_id: str, prompt: str) -> Tuple[bool, list, list]:
-    """프롬프트의 구체성과 필수 키워드 반영 여부를 판정합니다."""
+def check_prompt_success(st_id: str, prompt: str) -> Tuple[bool, list]:
+    """학생 프롬프트가 정답 코드를 수령할 조건을 만족했는지 판정."""
     info = ROLE_CATALOG.get(st_id, ROLE_CATALOG["student_01"])
     p_lower = prompt.strip().lower()
     matched = [item for item in info["prompt_checklist"] if item.lower() in p_lower]
-    missing = [item for item in info["prompt_checklist"] if item.lower() not in p_lower]
-    is_quality = (len(p_lower) >= 25 and len(matched) >= 2)
-    return is_quality, matched, missing
+    # 질문형이거나 단순 힌트 복사가 아닌, 25자 이상 요구조건 기술 + 필수 키워드 2개 이상
+    is_success = (len(p_lower) >= 25 and len(matched) >= 2)
+    return is_success, matched
 
 
 @st.cache_data(ttl=5)
 def check_ollama_status(target_model: str = "qwen2.5:3b-4k") -> dict:
-    """Ollama 서버 상태 및 모델 적재 여부, 세부 디버그 정보를 반환합니다."""
+    """Ollama 서버 연결 및 모델 상태 체크."""
     base_url = st.secrets.get("OLLAMA_BASE_URL", "https://lab-server.crayfish-coho.ts.net")
     target_endpoint = f"{base_url.rstrip('/')}/api/tags"
     
     debug_info = {
-        "online": False,
-        "model_loaded": False,
-        "base_url": base_url,
-        "endpoint": target_endpoint,
-        "status_code": None,
-        "msg": "",
-        "detail": "",
-        "models": []
+        "online": False, "model_loaded": False, "base_url": base_url,
+        "endpoint": target_endpoint, "status_code": None, "msg": "", "detail": "", "models": []
     }
-
     try:
         res = requests.get(target_endpoint, timeout=4.0)
         debug_info["status_code"] = res.status_code
-
         if res.status_code == 200:
-            data = res.json()
-            models = [m.get("name", "") for m in data.get("models", [])]
+            models = [m.get("name", "") for m in res.json().get("models", [])]
             debug_info["models"] = models
-            
             is_model_present = any(target_model in m or "3b" in m for m in models)
             debug_info["online"] = True
             debug_info["model_loaded"] = is_model_present
-            
-            if is_model_present:
-                debug_info["msg"] = f"정상 연결 ({target_model})"
-            else:
-                debug_info["msg"] = f"서버 구동 중 (모델 불일치: 보유 목록 {models})"
+            debug_info["msg"] = "정상 연결" if is_model_present else "모델 미발견"
         else:
-            debug_info["msg"] = f"HTTP {res.status_code} 오류"
-            debug_info["detail"] = res.text[:200]
-
-    except requests.exceptions.Timeout:
-        debug_info["msg"] = "응답 시간 초과 (4초)"
-        debug_info["detail"] = f"서버가 4초 내에 응답하지 않았습니다. URL: {target_endpoint}"
-    except requests.exceptions.SSLError as e:
-        debug_info["msg"] = "SSL 인증서 오류"
-        debug_info["detail"] = str(e)
-    except requests.exceptions.ConnectionError as e:
-        debug_info["msg"] = "네트워크 연결 거부 / 도메인 조회 실패"
-        debug_info["detail"] = str(e)
+            debug_info["msg"] = f"HTTP {res.status_code}"
     except Exception as e:
-        debug_info["msg"] = "통신 예외 발생"
+        debug_info["msg"] = "연결 실패"
         debug_info["detail"] = str(e)
-
     return debug_info
 
 
-def stream_local_ollama_qwen(
-    prompt: str,
-    system_prompt: str,
-    model_name: str = "qwen2.5:3b-4k",
-) -> Generator[str, None, None]:
-    """Ubuntu 랩 서버 Ollama Qwen 3B 스트리밍 클라이언트."""
+def stream_qwen_raw(messages: List[Dict[str, str]], temperature: float = 0.5) -> Generator[str, None, None]:
+    """Ollama /api/chat 엔드포인트를 호출하여 토큰 단위로 실시간 스트리밍."""
     base_url = st.secrets.get("OLLAMA_BASE_URL", "https://lab-server.crayfish-coho.ts.net")
-    url = f"{base_url.rstrip('/')}/api/generate"
+    url = f"{base_url.rstrip('/')}/api/chat"
 
     payload = {
-        "model": model_name,
-        "prompt": prompt,
-        "system": system_prompt,
+        "model": "qwen2.5:3b-4k",
+        "messages": messages,
         "stream": True,
         "options": {
-            "temperature": 0.35,
-            "num_predict": 300,
+            "temperature": temperature,
+            "top_p": 0.9,
+            "num_predict": 450,
         },
     }
     try:
-        with requests.post(url, json=payload, stream=True, timeout=25.0) as res:
+        with requests.post(url, json=payload, stream=True, timeout=30.0) as res:
             if res.status_code == 200:
                 for line in res.iter_lines():
                     if line:
                         chunk = json.loads(line.decode("utf-8"))
-                        yield chunk.get("response", "")
+                        token = chunk.get("message", {}).get("content", "")
+                        if token:
+                            yield token
                         if chunk.get("done", False):
                             break
             else:
-                yield f"\n⚠️ [서버 응답 코드: {res.status_code}]\n"
-    except requests.exceptions.ConnectionError:
-        yield "\n⚠️ [Ubuntu 랩 서버와 연결할 수 없습니다. Funnel 또는 네트워크 상태를 확인하세요.]\n"
+                yield f"\n⚠️ [서버 응답 오류: HTTP {res.status_code}]\n"
     except Exception as e:
-        yield f"\n⚠️ [AI 추론 통신 중 오류: {str(e)}]\n"
+        yield f"\n⚠️ [AI 통신 오류: {str(e)}]\n"
 
 
-def stream_gemini_vibe_code(team_id: str, user_prompt: str) -> Generator[str, None, None]:
-    """학생 입력에 맞춰 3단계 스캐폴딩 피드백 및 정답 코드를 제공합니다."""
-    prompt_clean = user_prompt.strip()
+def stream_hybrid_vibe_dialogue(
+    messages: List[Dict[str, str]],
+    assigned_role: Optional[str] = None,
+) -> Generator[str, None, None]:
+    """실시간 대화와 final_code 원본 코드 인출을 결합한 하이브리드 스트리머."""
+    latest_user_text = messages[-1]["content"] if messages else ""
 
-    if "prompt_retry_count" not in st.session_state:
-        st.session_state["prompt_retry_count"] = 0
-
-    hidden_target = check_hidden_master_command(prompt_clean)
-    if hidden_target:
-        st.session_state["assigned_student_role"] = hidden_target
-        info = ROLE_CATALOG.get(hidden_target, ROLE_CATALOG["student_01"])
-        code = read_master_code(hidden_target)
-        yield "🔓 **[교사용 마스터 오버라이드: 정답 코드 즉각 인출]**\n\n"
-        yield f"검증된 마스터 완성본 코드를 인출합니다:\n\n```python\n{code}\n```\n\n"
-        yield f"💡 위 코드를 복사하여 `final_code/{info['team']}/{info['file']}`에 바로 저장하세요."
+    # 1. 교사용 마스터키 오버라이드
+    match = re.search(r"\$\$answer-student_?([1-9]|1[0-9]|20)\b", latest_user_text.strip().lower())
+    if match:
+        target_role = f"student_{int(match.group(1)):02d}"
+        info = ROLE_CATALOG.get(target_role, ROLE_CATALOG["student_01"])
+        master_code = read_master_code(target_role)
+        yield "🔓 **[교사용 마스터 오버라이드]**\n\n"
+        yield f"`final_code/{info['team']}/{info['file']}` 원본 정답 코드를 즉시 인출합니다:\n\n"
+        yield f"```python\n{master_code}\n```\n\n"
+        yield f"💡 위 코드를 복사하여 `final_code/{info['team']}/{info['file']}`에 저장하세요."
         return
 
-    active_role = st.session_state.get("assigned_student_role")
-    detected = detect_role_from_prompt(prompt_clean)
-
-    if not active_role and detected:
-        st.session_state["assigned_student_role"] = detected
-        st.session_state["prompt_retry_count"] = 0
-        info = ROLE_CATALOG.get(detected, ROLE_CATALOG["student_01"])
-        yield f"🎯 **[{detected}] {info['title']} 모듈이 연결되었습니다!**\n\n"
-        yield f"우리 학생이 전담할 파일은 `final_code/{info['team']}/{info['file']}`이에요.\n\n"
-        yield "이 모듈에 필요한 **함수의 목적, 계산 공식, 예외 방어 조건**을 자연어로 AI에게 구체적으로 지시해 보세요!\n"
-        yield "💡 *팁: 요구사항이 너무 짧거나 모호하면 중요한 로직이 빠진 불완전한 코드가 만들어집니다.*"
+    # 2. 역할이 배정되지 않은 경우: 자연스러운 안내 및 일상 질문 답변
+    if not assigned_role:
+        system_prompt = (
+            "당신은 PAPSrun 고등학교 STEAM 코딩 수업의 AI 튜터 교사입니다.\n"
+            "학생이 질문한 내용(정체성, 모델 질문, 일상 대화 등)에 유쾌하고 친절하게 대답하세요.\n"
+            "그리고 학생이 오늘 담당할 1~20번 모듈 중 어떤 번호를 구현할 것인지 다정하게 물어보세요.\n"
+            "(절대로 코드를 먼저 출력하지 마세요)"
+        )
+        chat_history = [{"role": "system", "content": system_prompt}] + messages
+        for token in stream_qwen_raw(chat_history, temperature=0.6):
+            yield token
         return
 
-    if not active_role and not detected:
-        yield "👨‍🏫 **반가워요! PAPSrun 코딩 수업을 함께할 AI 튜터 선생님이에요.**\n\n오늘 우리 학생은 몇 번 파트를 맡으셨나요? (예: '2번 그늘 계산', '4번 경사도' 등)"
+    # 3. 역할이 배정된 경우: 합격 조건 도달 여부 판정
+    info = ROLE_CATALOG.get(assigned_role, ROLE_CATALOG["student_01"])
+    is_success, matched = check_prompt_success(assigned_role, latest_user_text)
+
+    # 3-A. 우수한 프롬프트로 합격한 경우: Qwen의 라이브 칭찬 + final_code 원본 파일 그대로 내뱉기
+    if is_success:
+        master_code = read_master_code(assigned_role)
+        system_praise = (
+            f"당신은 친절한 STEAM 교사입니다. 학생이 [{assigned_role}] {info['title']} 모듈의 필수 조건({matched})을 "
+            f"훌륭하게 프롬프트로 작성했습니다. 학생의 성장을 축하하고, 이 모듈이 캠퍼스 러닝 추천 시스템에서 어떤 역할을 "
+            f"하게 되는지 2~3문장으로 다정하게 칭찬해 주세요. (코드는 출력하지 마세요, 시스템이 바로 코드를 덧붙입니다)"
+        )
+        praise_history = [{"role": "system", "content": system_praise}] + messages
+        yield "🎉 **훌륭해요! 제시한 요구 조건이 모두 충족되었습니다.**\n\n"
+        for token in stream_qwen_raw(praise_history, temperature=0.4):
+            yield token
+
+        # ✨ LLM 환각 없이 final_code 디렉토리의 실제 검증된 코드 원본을 그대로 방출
+        yield f"\n\n📂 **검증된 마스터 원본 코드 (`final_code/{info['team']}/{info['file']}`)**:\n"
+        yield f"```python\n{master_code}\n```\n\n"
+        yield f"💡 위 코드를 그대로 복사하여 `final_code/{info['team']}/{info['file']}` 파일에 저장하세요!"
         return
 
-    if detected:
-        active_role = detected
-        st.session_state["assigned_student_role"] = active_role
+    # 3-B. 아직 조건이 부족하거나 질문을 하는 경우: Qwen이 라이브로 스캐폴딩 힌트 생성
+    system_guide = f"""
+당신은 PAPSrun 고등학교 STEAM 수업의 AI 튜터 교사입니다.
+학생은 현재 [{assigned_role}] {info['title']} 모듈을 작성하고 있습니다.
+핵심 개념: {info['core_concept']}
 
-    info = ROLE_CATALOG.get(active_role, ROLE_CATALOG["student_01"])
-    master_code = read_master_code(active_role)
-    is_quality, matched, missing = evaluate_prompt_quality(active_role, prompt_clean)
-
-    if not is_quality:
-        st.session_state["prompt_retry_count"] += 1
-        current_step = min(st.session_state["prompt_retry_count"], 3)
-        buggy_code = info.get("buggy_code", f"# {info['file']}\npass")
-
-        yield "⚠️ **요구사항이 너무 단순하여 핵심 로직이 빠진 코드가 만들어졌어요!**\n\n"
-        yield f"```python\n{buggy_code}\n```\n\n"
-
-        scaffold_text = info["scaffold_hints"][current_step - 1]
-
-        if current_step == 1:
-            yield f"👨‍🏫 **선생님 생각 유도 (1단계):**\n{scaffold_text}\n\n"
-            yield "👉 *포기하지 말고, 빠진 물리·수학적 상황을 한 번 더 떠올려 프롬프트에 살을 붙여보세요!*"
-        elif current_step == 2:
-            yield f"👨‍🏫 **선생님 개념 단서 (2단계):**\n{scaffold_text}\n\n"
-            yield "👉 *이 단서들을 조합해서 자연어 문장으로 다시 요청해 보세요.*"
-        else:
-            yield f"👨‍🏫 **선생님 문장 가이드 (3단계):**\n{scaffold_text}\n\n"
-            yield "👉 *위 예시 문장을 참고하여 내 생각을 담은 온전한 문장으로 요청해 보세요!*"
-        return
-
-    st.session_state["prompt_retry_count"] = 0
-    yield f"🎉 **대단해요! 요구하신 조건({', '.join(matched)})이 모두 명확하게 반영된 완성형 코드입니다.**\n\n"
-    yield f"```python\n{master_code}\n```\n\n"
-    yield "👨‍🏫 **선생님의 파이프라인 해설:**\n"
-
-    system_praise = (
-        "당신은 친절한 고등학교 STEAM 교사입니다. 학생이 훌륭한 자연어 프롬프트로 모듈을 완성했음을 칭찬하고, "
-        "이 모듈이 PAPSrun 러닝 코스 추천 시스템 전체에서 어떤 중요한 역할을 하는지 다정하게 2문장으로 설명하세요."
-    )
-    prompt_praise = f"완성 모듈: [{active_role}] {info['title']}, 만족 조건: {matched}"
-    for token in stream_local_ollama_qwen(prompt=prompt_praise, system_prompt=system_praise):
+[행동 규칙]
+1. 절대로 완성된 파이썬 함수/정답 코드를 통째로 출력하지 마세요. (학생이 스스로 프롬프트를 다듬어야 합니다)
+2. 학생이 "모르겠어", "어려워", "코드 줘"라고 하면 격려하면서, 다음 단계를 유도하세요:
+   - 1단계: 어떤 물리 상황(예: 그늘에 들어가면 햇빛이 어떻게 되는지 등)이 빠졌는지 생각해 보도록 유도
+   - 2단계: 핵심 공식이나 방어할 상황(예: 일사량이 음수가 되는 오류 방어)에 대한 단서 제공
+   - 3단계: 자연어 프롬프트를 어떻게 작성하면 좋을지 문장의 뼈대 예시 제시
+3. 학생의 말에 귀 기울이며 다정하고 자연스러운 한국어 구어체로 대화하세요.
+"""
+    guide_history = [{"role": "system", "content": system_guide}] + messages
+    for token in stream_qwen_raw(guide_history, temperature=0.5):
         yield token
-
-    yield f"\n\n💡 **적용 방법**: 위 완성 코드를 복사하여 `final_code/{info['team']}/{info['file']}`에 저장하세요!"
-
-
-MASTER_COMPONENTS = {
-    k: {
-        "name": v["title"],
-        "correct_code": f'# {v["file"]}',
-        "incomplete_code": f'# {v["file"]}',
-        "missing_features": "기본 구현",
-    }
-    for k, v in ROLE_CATALOG.items()
-}
-for t in range(1, 5):
-    MASTER_COMPONENTS[f"TEAM_{t}"] = MASTER_COMPONENTS[f"student_{(t-1)*5 + 1:02d}"]
-
-
-def request_gemini_vibe_code(team_id: str, user_prompt: str, api_key: Optional[str] = None) -> Tuple[str, str]:
-    full_text = "".join(list(stream_gemini_vibe_code(team_id, user_prompt)))
-    code_match = re.search(r"```python(.*?)```", full_text, re.DOTALL)
-    return (code_match.group(1).strip() if code_match else ""), full_text
-
-
-def generate_vibe_code(
-    user_requirements: str,
-    student_profile: Optional[Dict[str, Any]] = None,
-    weather_info: Optional[Dict[str, Any]] = None,
-) -> str:
-    team_id = (student_profile or {}).get("team_id", "student_01")
-    code, feedback = request_gemini_vibe_code(team_id=team_id, user_prompt=user_requirements)
-    return f"{feedback}\n\n```python\n{code}\n```"
-
-
-def is_gemini_available() -> bool:
-    return True
-
-
-def get_gemini_client(api_key: Optional[str] = None):
-    return None
