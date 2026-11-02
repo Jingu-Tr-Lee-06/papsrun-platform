@@ -1,5 +1,6 @@
 ﻿"""PAPSrun 지능형 바이브 코딩 튜터 엔진 (3단계 교육학적 스캐폴딩 탑재).
 
+Ubuntu 랩 서버(Tailscale IP: 100.102.25.109)의 Ollama Qwen2.5-Coder:3B와 직접 통신합니다.
 학생의 실패 횟수(retry_count)를 세션별로 추적하여:
 1회 실패: 정답 힌트 없이 현상 환기 및 스스로 사고 촉진
 2회 실패: 핵심 과학/물리 개념 단서만 살짝 제공 (코드 노출 금지)
@@ -137,14 +138,28 @@ def evaluate_prompt_quality(st_id: str, prompt: str) -> Tuple[bool, list, list]:
     return is_quality, matched, missing
 
 
-def stream_local_ollama_qwen(prompt: str, system_prompt: str, model_name: str = "qwen2.5-coder:7b") -> Generator[str, None, None]:
-    url = "http://localhost:11434/api/generate"
+def stream_local_ollama_qwen(
+    prompt: str,
+    system_prompt: str,
+    model_name: str = "qwen2.5-coder:3b",
+) -> Generator[str, None, None]:
+    """Ubuntu 랩 서버(Tailscale IP: 100.102.25.109) Ollama Qwen2.5-Coder:3B 스트리밍 클라이언트."""
+    # Secrets에 설정된 URL이 있으면 우선 사용하고, 없으면 Tailscale 사설 IP를 기본값으로 사용
+    base_url = st.secrets.get("OLLAMA_BASE_URL", "http://100.102.25.109:11434")
+    url = f"{base_url.rstrip('/')}/api/generate"
+
     payload = {
-        "model": model_name, "prompt": prompt, "system": system_prompt,
-        "stream": True, "options": {"temperature": 0.3, "num_predict": 300}
+        "model": model_name,
+        "prompt": prompt,
+        "system": system_prompt,
+        "stream": True,
+        "options": {
+            "temperature": 0.35,
+            "num_predict": 300,
+        },
     }
     try:
-        with requests.post(url, json=payload, stream=True, timeout=30.0) as res:
+        with requests.post(url, json=payload, stream=True, timeout=25.0) as res:
             if res.status_code == 200:
                 for line in res.iter_lines():
                     if line:
@@ -152,8 +167,12 @@ def stream_local_ollama_qwen(prompt: str, system_prompt: str, model_name: str = 
                         yield chunk.get("response", "")
                         if chunk.get("done", False):
                             break
-    except Exception:
-        yield "\n(튜터 피드백 연동 대기 중)\n"
+            else:
+                yield f"\n⚠️ [서버 응답 코드: {res.status_code}]\n"
+    except requests.exceptions.ConnectionError:
+        yield "\n⚠️ [Ubuntu 랩 서버(100.102.25.109:11434)와 연결할 수 없습니다. Tailscale 접속 상태를 확인해 주세요.]\n"
+    except Exception as e:
+        yield f"\n⚠️ [AI 추론 통신 중 오류: {str(e)}]\n"
 
 
 def stream_gemini_vibe_code(team_id: str, user_prompt: str) -> Generator[str, None, None]:
@@ -228,8 +247,11 @@ def stream_gemini_vibe_code(team_id: str, user_prompt: str) -> Generator[str, No
     yield f"🎉 **대단해요! 요구하신 조건({', '.join(matched)})이 모두 명확하게 반영된 완성형 코드입니다.**\n\n"
     yield f"```python\n{master_code}\n```\n\n"
     yield "👨‍🏫 **선생님의 파이프라인 해설:**\n"
-    
-    system_praise = "당신은 STEAM 교사입니다. 학생이 훌륭한 프롬프트로 모듈을 완성했음을 칭찬하고, 이 모듈이 러닝 코스 추천 시스템 전체에서 어떤 중요한 역할을 하는지 다정하게 2문장으로 설명하세요."
+
+    system_praise = (
+        "당신은 친절한 고등학교 STEAM 교사입니다. 학생이 훌륭한 자연어 프롬프트로 모듈을 완성했음을 칭찬하고, "
+        "이 모듈이 PAPSrun 러닝 코스 추천 시스템 전체에서 어떤 중요한 역할을 하는지 다정하게 2문장으로 설명하세요."
+    )
     prompt_praise = f"완성 모듈: [{active_role}] {info['title']}, 만족 조건: {matched}"
     for token in stream_local_ollama_qwen(prompt=prompt_praise, system_prompt=system_praise):
         yield token

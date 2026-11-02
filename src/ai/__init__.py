@@ -1,14 +1,11 @@
-"""PAPSrun 생성형 AI 및 바이브 코딩 연동 패키지.
-
-Gemini 모델 통신 클라이언트, 프롬프트 템플릿, 코드 블록 추출기,
-그리고 AST 기반 샌드박스 실행기를 노출합니다.
-"""
+"""PAPSrun 생성형 AI 및 바이브 코딩 연동 패키지 (Ollama 전용)."""
 
 from src.ai.code_extractor import extract_vibe_function_code
 from src.ai.gemini_client import (
     generate_vibe_code,
     get_gemini_client,
     is_gemini_available,
+    stream_gemini_vibe_code,
 )
 from src.ai.prompt_templates import (
     VIBE_SYSTEM_PROMPT,
@@ -19,18 +16,26 @@ from src.ai.sandbox_runner import (
     execute_weight_function_sandbox,
     verify_code_security,
 )
+from src.ai.vibe_coder import (
+    compile_custom_weight_function,
+    generate_running_route_feedback,
+    generate_weight_function_code,
+)
 
 __all__ = [
-    # Gemini 통신
+    # 바이브 코딩 및 Ollama 통신
     "generate_vibe_code",
+    "stream_gemini_vibe_code",
     "get_gemini_client",
     "is_gemini_available",
+    "generate_weight_function_code",
+    "compile_custom_weight_function",
+    "generate_running_route_feedback",
     # 프롬프트
     "VIBE_SYSTEM_PROMPT",
     "format_weight_function_prompt",
-    # 코드 파싱
+    # 코드 파싱 및 샌드박스
     "extract_vibe_function_code",
-    # AST 샌드박스 러너
     "CodeSecurityVisitor",
     "verify_code_security",
     "execute_weight_function_sandbox",
