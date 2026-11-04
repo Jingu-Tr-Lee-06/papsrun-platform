@@ -17,16 +17,22 @@ import streamlit as st
 # ==============================================================================
 SURFACE_ALBEDO_MAP: Dict[str, float] = {
     "asphalt": 0.10,       # 신설/일반 아스팔트
+    "asphalt_dark": 0.10,
+    "asphalt_aged": 0.15,
     "urethane": 0.20,      # 우레탄 트랙
+    "urethane_track": 0.20,
     "concrete": 0.30,      # 콘크리트 보도블록
+    "concrete_walkway": 0.30,
     "dirt": 0.25,          # 흙길
+    "soil_trail": 0.25,
     "shaded_dirt": 0.25,   # 수관 차광 녹지 흙길
     "grass": 0.22,         # 잔디밭
+    "lawn_grass": 0.22,
 }
 
 FALLBACK_WEATHER: Dict[str, Any] = {
-    "temp_c": 31.5,
-    "solar_w_m2": 750.0,
+    "temp_c": 24.5,
+    "solar_w_m2": 700.0,
     "status": "FALLBACK_MOCK",
     "station_name": "기본 관측소",
     "updated_at": "DEFAULT",
@@ -71,7 +77,6 @@ def _raw_request_kma_api(station_id: str, api_key: str, tm_str: Optional[str] = 
         "help": "0",
         "authKey": api_key,
     }
-    # tm이 있으면 전달, 없으면 서버가 가장 최신 관측값 반환
     if tm_str:
         params["tm"] = tm_str
 
@@ -103,7 +108,7 @@ def fetch_kma_weather_data(
     station_id: Optional[str] = None,
     api_key: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """인접 관측소에서 실시간 기온과 전일사량을 수신합니다 (빈 데이터 시 대전 ASOS 자동 폴백)."""
+    """인접 관측소에서 실시간 기온과 전일사량을 수신합니다."""
     key = api_key or st.secrets.get("KMA_API_KEY", "")
     if not key:
         return {
@@ -113,20 +118,16 @@ def fetch_kma_weather_data(
             "updated_at": datetime.now().strftime("%H:%M:%S"),
         }
 
-    # 1. 1차 타겟 관측소 결정
     stn_info = find_nearest_kma_station(lat, lng) if not station_id else {"stn_id": station_id, "name": f"지점 {station_id}", "distance_km": 0.0}
     target_stn_id = stn_info["stn_id"]
     stn_name = stn_info.get("name", "지정 관측소")
     dist_km = stn_info.get("distance_km", 0.0)
 
     try:
-        # tm을 생략하여 기상청 최신 관측값을 직접 요청
         res = _raw_request_kma_api(target_stn_id, key.strip(), tm_str=None)
         text = res.get("text", "")
-
         target_tokens = _parse_kma_text(text)
 
-        # 2. 만약 해당 지점에 관측값이 비어있다면, 대전 ASOS(133, 충청권 대표 거점)로 자동 폴백
         if not target_tokens and target_stn_id != "133":
             res = _raw_request_kma_api("133", key.strip(), tm_str=None)
             text = res.get("text", "")
@@ -136,8 +137,7 @@ def fetch_kma_weather_data(
                 target_stn_id = "133"
 
         if target_tokens:
-            # 기온(TA) 파싱: 기본 11번 인덱스 또는 유효 범위 숫자 탐색
-            temp = 18.0
+            temp = 20.0
             if len(target_tokens) > 11 and target_tokens[11] not in ["-99.0", "-99", "-50.0"]:
                 try:
                     temp = float(target_tokens[11])
@@ -153,20 +153,32 @@ def fetch_kma_weather_data(
                     except ValueError:
                         continue
 
-            # 일사량(SI) 파싱 (1 MJ/m² = 277.78 W/m²)
+            # 일사량(SI) 파싱 및 물리적 클램핑 보정 (태양 상수 1000 W/m² 상한 방어)
             solar_w = 0.0
+            found_solar = False
             for idx in [15, 14, 13]:
                 if len(target_tokens) > idx and target_tokens[idx] not in ["-99.0", "-99", "-"]:
                     try:
-                        raw_solar = float(target_tokens[idx])
-                        if raw_solar > 0:
-                            solar_w = round(raw_solar * 277.78, 1)
+                        raw_val = float(target_tokens[idx])
+                        if raw_val > 0.0:
+                            if 50.0 <= raw_val <= 1200.0:
+                                solar_w = raw_val
+                            elif 0.01 <= raw_val < 5.0:
+                                solar_w = raw_val * 277.78
+                            
+                            found_solar = True
                             break
                     except ValueError:
                         pass
 
+            current_hour = datetime.now().hour
+            if (not found_solar or solar_w < 10.0) and (8 <= current_hour <= 17):
+                solar_w = 700.0
+
+            solar_w = round(max(0.0, min(1000.0, solar_w)), 1)
+
             return {
-                "temp_c": temp,
+                "temp_c": round(temp, 1),
                 "solar_w_m2": solar_w,
                 "status": "LIVE_KMA_API",
                 "station_id": target_stn_id,
@@ -179,7 +191,6 @@ def fetch_kma_weather_data(
             **FALLBACK_WEATHER,
             "status": "API_EMPTY_DATA",
             "station_name": f"{stn_name} ({dist_km}km)",
-            "raw_preview": text[:300],
             "updated_at": datetime.now().strftime("%H:%M:%S"),
         }
 
@@ -227,8 +238,16 @@ def calculate_absorbed_radiation(
     tree_canopy_cover: float = 0.0,
 ) -> Dict[str, float]:
     """R_abs = I_eff * (1 - albedo) 단위면적당 지표 순흡수 복사에너지 연산"""
-    albedo = SURFACE_ALBEDO_MAP.get(surface_type.lower(), 0.15)
-    effective_solar = solar_w_m2 * (1.0 - max(0.0, min(0.95, tree_canopy_cover)))
+    safe_solar = max(0.0, min(1000.0, float(solar_w_m2)))
+    
+    clean_key = surface_type.lower()
+    for key in SURFACE_ALBEDO_MAP:
+        if key in clean_key:
+            clean_key = key
+            break
+            
+    albedo = SURFACE_ALBEDO_MAP.get(clean_key, 0.20)
+    effective_solar = safe_solar * (1.0 - max(0.0, min(0.95, tree_canopy_cover)))
     absorbed_rad = effective_solar * (1.0 - albedo)
 
     return {
@@ -243,14 +262,14 @@ def inject_radiation_to_edges(
     current_weather: Dict[str, Any],
 ) -> Dict[str, Dict[str, Any]]:
     """간선(Edge) 딕셔너리에 지표 흡수 복사에너지 속성을 일괄 주입합니다."""
-    solar_w = float(current_weather.get("solar_w_m2", 750.0))
-    temp_c = float(current_weather.get("temp_c", 31.5))
+    solar_w = float(current_weather.get("solar_w_m2", 700.0))
+    temp_c = float(current_weather.get("temp_c", 25.0))
 
     updated_edges = {}
     for edge_id, edge in edges.items():
         edge_data = dict(edge)
         surface = edge_data.get("surface_type", "asphalt")
-        canopy = float(edge_data.get("tree_canopy_cover", 0.0))
+        canopy = 0.70 if edge_data.get("is_shaded", False) else float(edge_data.get("tree_canopy_cover", 0.0))
 
         rad_info = calculate_absorbed_radiation(solar_w, surface, canopy)
         edge_data["albedo"] = rad_info["albedo"]
